@@ -1,17 +1,18 @@
-use crate::storage::{load_tasks, save_tasks};
+use crate::storage::{FilePath, load_tasks, save_tasks};
 use crate::task::Task;
+use std::fs;
 use std::io::{Error, ErrorKind};
 
-pub fn add_task(content: String) -> Result<(), Box<dyn std::error::Error>> {
-    let mut tasks: Vec<Task> = load_tasks();
+pub fn add_task(content: String, path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
+    let mut tasks: Vec<Task> = load_tasks(path);
     let new_id: usize = tasks.iter().map(|t| t.id()).max().unwrap_or(0) + 1;
     let new_task: Task = Task::new(new_id, content);
     tasks.push(new_task);
-    save_tasks(&tasks)
+    save_tasks(&tasks, path)
 }
 
-pub fn list_task() {
-    let tasks: Vec<Task> = load_tasks();
+pub fn list_task(path: &FilePath) {
+    let tasks: Vec<Task> = load_tasks(path);
     if tasks.is_empty() {
         println!("No tasks");
         return;
@@ -22,8 +23,8 @@ pub fn list_task() {
     }
 }
 
-pub fn complete_task(id: usize) -> Result<(), Box<dyn std::error::Error>> {
-    let mut tasks: Vec<Task> = load_tasks();
+pub fn complete_task(id: usize, path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
+    let mut tasks: Vec<Task> = load_tasks(path);
     let mut find: bool = false;
     for task in tasks.iter_mut() {
         if task.id() == id {
@@ -35,42 +36,29 @@ pub fn complete_task(id: usize) -> Result<(), Box<dyn std::error::Error>> {
     if !find {
         return Err(Box::new(Error::new(ErrorKind::NotFound, "Not Found")));
     }
-    save_tasks(&tasks)
+    save_tasks(&tasks, path)
 }
 
-pub fn delete_task(id: usize) -> Result<(), Box<dyn std::error::Error>> {
-    let mut tasks: Vec<Task> = load_tasks();
+pub fn delete_task(id: usize, path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
+    let mut tasks: Vec<Task> = load_tasks(path);
     let orgin_len = tasks.len();
     tasks.retain(|task: &Task| task.id() != id);
     if tasks.len() == orgin_len {
         return Err(Box::new(Error::new(ErrorKind::NotFound, "Not Found")));
     }
-    save_tasks(&tasks)
+    save_tasks(&tasks, path)
 }
 
 #[test]
-fn test_add() {
-    let content = String::from("test_content3");
-    add_task(content).expect("add_task failed");
-}
-
-#[test]
-fn test_list() {
-    list_task();
-}
-
-#[test]
-fn test_complete() {
-    let content = String::from("test_content1");
-    add_task(content).expect("add_task failed");
-    complete_task(1).unwrap();
-    list_task();
-}
-
-#[test]
-fn test_delete() {
-    // let content = String::from("test_content1");
-    // add_task(content).expect("add_task failed");
-    delete_task(1).unwrap();
-    list_task();
+fn test_commands() {
+    let path: FilePath = FilePath::new(Some(String::from("test_commands.json")));
+    let _ = fs::remove_file(path.path());
+    let content1 = String::from("test_content1");
+    list_task(&path);
+    add_task(content1, &path).unwrap();
+    list_task(&path);
+    complete_task(1, &path).unwrap();
+    list_task(&path);
+    delete_task(1, &path).unwrap();
+    list_task(&path);
 }
