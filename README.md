@@ -15,14 +15,14 @@ cargo build --release
 $ cargo run -- add "提交issue"
 $ cargo run -- add "修改代码"
 $ cargo run -- list
-Task List
-Task1, 提交issue, Incomplete
-Task2, 修改代码, Incomplete
+status| id | task
+  [ ]   1    提交issue
+  [ ]   2    修改代码
 $ cargo run -- done 1
 $ cargo run -- list
-Task List
-Task1, 提交issue, Done
-Task2, 修改代码, Incomplete
+status| id | task
+  [✓]   1    提交issue
+  [ ]   2    修改代码
 ```
 
 ## 指令
