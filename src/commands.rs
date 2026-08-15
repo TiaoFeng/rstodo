@@ -1,6 +1,5 @@
 use crate::storage::{FilePath, load_tasks, save_tasks};
 use crate::task::Task;
-use std::fs;
 use std::io::{Error, ErrorKind};
 
 pub fn add_task(content: String, path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
@@ -51,6 +50,7 @@ pub fn delete_task(id: usize, path: &FilePath) -> Result<(), Box<dyn std::error:
 
 #[test]
 fn test_commands() {
+    use std::fs;
     let path: FilePath = FilePath::new(Some(String::from("test_commands.json")));
     let _ = fs::remove_file(path.path());
     let content1 = String::from("test_content1");

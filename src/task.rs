@@ -20,11 +20,11 @@ impl Task {
         self.id
     }
 
-    pub fn content(&self) -> &str {
+    pub fn _content(&self) -> &str {
         &self.content
     }
 
-    pub fn completed(&self) -> bool {
+    pub fn _completed(&self) -> bool {
         self.completed
     }
 
@@ -47,9 +47,9 @@ fn test_task() {
     let content = String::from("test_content");
     let mut task = Task::new(id, content.clone());
     assert_eq!(task.id(), id);
-    assert_eq!(task.content(), content);
-    assert_eq!(task.completed(), false);
+    assert_eq!(task._content(), content);
+    assert_eq!(task._completed(), false);
 
     task.complete();
-    assert_eq!(task.completed(), true);
+    assert_eq!(task._completed(), true);
 }
