@@ -32,6 +32,10 @@ impl Task {
         self.completed = true;
     }
 
+    pub fn incomplete(&mut self) {
+        self.completed = false;
+    }
+
     pub fn print(&self) {
         let status: &str = if self.completed { "✓" } else { " " };
         println!("  [{}]   {:<3}  {}", status, self.id, self.content);
@@ -49,4 +53,7 @@ fn test_task() {
 
     task.complete();
     assert_eq!(task._completed(), true);
+
+    task.incomplete();
+    assert_eq!(task._completed(), false);
 }

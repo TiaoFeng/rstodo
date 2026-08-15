@@ -41,6 +41,11 @@ status| id | task
 ./target/release/rust-todo-cli-demo -- done {id}
 ```
 
+标记 todo 未完成
+```text
+./target/release/rust-todo-cli-demo -- undone {id}
+```
+
 删除 todo 条目
 ```text
 ./target/release/rust-todo-cli-demo -- delete {id}

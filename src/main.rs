@@ -17,6 +17,7 @@ enum Commands {
     Add { content: String },
     List,
     Done { id: usize },
+    Undone { id: usize },
     Delete { id: usize },
 }
 
@@ -30,6 +31,7 @@ fn main() {
             Ok(())
         }
         Commands::Done { id } => commands::complete_task(id, &path),
+        Commands::Undone { id } => commands::incomplete_task(id, &path),
         Commands::Delete { id } => commands::delete_task(id, &path),
     };
     if let Err(e) = result {

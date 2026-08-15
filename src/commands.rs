@@ -38,6 +38,22 @@ pub fn complete_task(id: usize, path: &FilePath) -> Result<(), Box<dyn std::erro
     save_tasks(&tasks, path)
 }
 
+pub fn incomplete_task(id: usize, path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
+    let mut tasks: Vec<Task> = load_tasks(path);
+    let mut find: bool = false;
+    for task in tasks.iter_mut() {
+        if task.id() == id {
+            task.incomplete();
+            find = true;
+            break;
+        }
+    }
+    if !find {
+        return Err(Box::new(Error::new(ErrorKind::NotFound, "Not Found")));
+    }
+    save_tasks(&tasks, path)
+}
+
 pub fn delete_task(id: usize, path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
     let mut tasks: Vec<Task> = load_tasks(path);
     let orgin_len = tasks.len();
@@ -58,6 +74,8 @@ fn test_commands() {
     add_task(content1, &path).unwrap();
     list_task(&path);
     complete_task(1, &path).unwrap();
+    list_task(&path);
+    incomplete_task(1, &path).unwrap();
     list_task(&path);
     delete_task(1, &path).unwrap();
     list_task(&path);
