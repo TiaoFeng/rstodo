@@ -33,11 +33,8 @@ impl Task {
     }
 
     pub fn print(&self) {
-        if self.completed {
-            println!("Task{}, {}, Done", self.id, self.content);
-        } else {
-            println!("Task{}, {}, Incomplete", self.id, self.content);
-        }
+        let status: &str = if self.completed { "✓" } else { " " };
+        println!("  [{}]   {:<3}  {}", status, self.id, self.content);
     }
 }
 

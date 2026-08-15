@@ -16,7 +16,7 @@ pub fn list_task(path: &FilePath) {
         println!("No tasks");
         return;
     }
-    println!("Task List");
+    println!("status| id | task");
     for task in tasks {
         task.print();
     }
