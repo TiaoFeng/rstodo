@@ -1,3 +1,6 @@
+# mygitignore
+*.json
+
 # Created by https://www.toptal.com/developers/gitignore/api/linux,rust,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=linux,rust,visualstudiocode
 
@@ -52,3 +55,8 @@ Cargo.lock
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/linux,rust,visualstudiocode
+
+
+# Added by cargo
+
+/target
