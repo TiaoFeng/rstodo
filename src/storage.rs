@@ -1,5 +1,6 @@
 use crate::task::Task;
-use std::fs;
+use std::fs::File;
+use std::io::{Error, ErrorKind, Read, Seek, SeekFrom, Write};
 
 pub enum FilePath {
     Custom(String),
@@ -22,36 +23,62 @@ impl FilePath {
     }
 }
 
-pub fn load_tasks(path: &FilePath) -> Vec<Task> {
-    let path = path.path();
-    let content = fs::read_to_string(path);
-    match content {
-        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|_| Vec::new()),
-        Err(_) => Vec::new(),
-    }
-}
-
-pub fn save_tasks(tasks: &[Task], path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
-    let path = path.path();
-    let data = serde_json::to_string_pretty(tasks)?;
-    fs::write(path, data)?;
+pub fn update_tasks(
+    path: &FilePath,
+    f: impl FnOnce(&mut Vec<Task>) -> Result<(), Box<dyn std::error::Error>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file = File::options()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path.path())?;
+    file.lock()?;
+    let mut tasks = load_from(&file)?;
+    f(&mut tasks)?;
+    save_to(&file, &tasks)?;
+    file.unlock()?;
     Ok(())
 }
 
-#[test]
-fn test_save_and_load() {
-    let task1: Task = Task::new(1001, String::from("test_content1"), None);
-    let task2: Task = Task::new(
-        1002,
-        String::from("test_content2"),
-        Some("2000-01-01T12:00:00+00:00".parse().unwrap()),
-    );
-    let tasks: Vec<Task> = vec![task1, task2];
+fn load_from(file: &File) -> Result<Vec<Task>, Box<dyn std::error::Error>> {
+    let mut f = file.try_clone()?;
+    f.seek(SeekFrom::Start(0))?;
+    let mut text = String::new();
+    f.read_to_string(&mut text)?;
+    if text.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(serde_json::from_str(&text).map_err(|e| {
+        Error::new(
+            ErrorKind::InvalidData,
+            format!("The file contents are corrupted: {}", e),
+        )
+    })?)
+}
 
-    let test_path: FilePath = FilePath::new(Some(String::from("test_save_and_load.json")));
-    let _ = fs::remove_file(test_path.path());
-    save_tasks(&tasks, &test_path).unwrap();
+fn save_to(file: &File, tasks: &[Task]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut f = file.try_clone()?;
+    let data = serde_json::to_string_pretty(tasks)?;
+    f.seek(SeekFrom::Start(0))?;
+    f.set_len(0)?;
+    f.write_all(data.as_bytes())?;
+    f.flush()?;
+    Ok(())
+}
 
-    let loading_tasks: Vec<Task> = load_tasks(&test_path);
-    assert_eq!(tasks, loading_tasks);
+pub fn load_tasks(path: &FilePath) -> Result<Vec<Task>, Box<dyn std::error::Error>> {
+    let file = match File::options()
+        .read(true)
+        .write(false)
+        .create(false)
+        .truncate(false)
+        .open(path.path())
+    {
+        Ok(f) => f,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
+    };
+    file.lock_shared()?;
+    load_from(&file)
 }

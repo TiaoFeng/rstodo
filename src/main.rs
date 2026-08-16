@@ -49,10 +49,7 @@ fn main() {
             content,
             deadline,
         } => commands::change_task(id, &path, content, deadline),
-        Commands::List => {
-            commands::list_task(&path);
-            Ok(())
-        }
+        Commands::List => commands::list_task(&path),
         Commands::Done { id } => commands::complete_task(id, &path),
         Commands::Undone { id } => commands::incomplete_task(id, &path),
         Commands::Delete { id } => commands::delete_task(id, &path),
