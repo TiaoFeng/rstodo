@@ -88,5 +88,5 @@ status| id |         deadline         | task
 
 ## 鸣谢
 
-- Claude Sonnet 5 和 DeepSeek V4 Flash 提供技术指导。
+- Claude Sonnet 5 、 DeepSeek V4 Flash 和 DeepSeek V4 Pro 提供技术指导。
 - [opencode](https://github.com/anomalyco/opencode) 提供优秀、开源的工具。
