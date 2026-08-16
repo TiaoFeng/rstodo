@@ -14,13 +14,10 @@ pub struct Task {
 impl Task {
     pub fn new(id: usize, content: String, deadline: Option<DateTime<Utc>>) -> Task {
         Task {
-            id: id,
-            content: content,
+            id,
+            content,
             completed: false,
-            deadline: match deadline {
-                Some(t) => Some(t),
-                None => None,
-            },
+            deadline,
         }
     }
 
@@ -79,13 +76,13 @@ fn test_task() {
 
     assert_eq!(task.id(), id);
     assert_eq!(task._content(), content);
-    assert_eq!(task._completed(), false);
+    assert!(!task._completed());
 
     task.complete();
-    assert_eq!(task._completed(), true);
+    assert!(task._completed());
 
     task.incomplete();
-    assert_eq!(task._completed(), false);
+    assert!(!task._completed());
 
     // let deadline_wrong: DateTime<Utc> = "2000-01-10T12:00:00+00:00".parse().unwrap();
     assert_eq!(task._deadline(), Some(deadline));
