@@ -1,9 +1,9 @@
-# rust-todo-cli-demo
+# rust-todo-cli
 这是一个新手入门Rust程式语言的第一个小项目。演示项目实现了一个简单的 Todo CLI + 使用 json 文件持久化 Todo 清单。通过这个项目可以学习基本的程序设计、测试与错误处理。
 
 ## 构建
 ```
-git clone https://github.com/TiaoFeng/rust-todo-cli-demo.git
+git clone https://github.com/TiaoFeng/rust-todo-cli.git
 ```
 ```
 cd rust-todo-cli-demo
