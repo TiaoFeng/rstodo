@@ -1,5 +1,3 @@
-use chrono::{DateTime, Utc};
-
 use crate::storage::{FilePath, load_tasks, save_tasks};
 use crate::task::Task;
 use crate::time::parse_deadline_input;
@@ -8,11 +6,15 @@ use std::io::{Error, ErrorKind};
 pub fn add_task(
     content: String,
     path: &FilePath,
-    deadline: Option<DateTime<Utc>>,
+    deadline: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_deadline = match deadline {
+        Some(s) => Some(parse_deadline_input(&s)?),
+        None => None,
+    };
     let mut tasks: Vec<Task> = load_tasks(path);
     let new_id: usize = tasks.iter().map(|t| t.id()).max().unwrap_or(0) + 1;
-    let new_task: Task = Task::new(new_id, content, deadline);
+    let new_task: Task = Task::new(new_id, content, parsed_deadline);
     tasks.push(new_task);
     save_tasks(&tasks, path)
 }

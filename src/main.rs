@@ -3,10 +3,8 @@ mod storage;
 mod task;
 mod time;
 
-use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
 use storage::FilePath;
-use time::parse_deadline_input;
 
 #[derive(Parser)]
 #[command(name = "todo")]
@@ -45,13 +43,7 @@ fn main() {
     let cli = Cli::parse();
     let path = FilePath::new(None);
     let result = match cli.command {
-        Commands::Add { content, deadline } => {
-            let parsed_deadline: Option<DateTime<Utc>> = match deadline {
-                Some(s) => Some(parse_deadline_input(&s).unwrap()),
-                None => None,
-            };
-            commands::add_task(content, &path, parsed_deadline)
-        }
+        Commands::Add { content, deadline } => commands::add_task(content, &path, deadline),
         Commands::Change {
             id,
             content,
