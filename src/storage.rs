@@ -40,8 +40,12 @@ pub fn save_tasks(tasks: &[Task], path: &FilePath) -> Result<(), Box<dyn std::er
 
 #[test]
 fn test_save_and_load() {
-    let task1: Task = Task::new(1001, String::from("test_content1"));
-    let task2: Task = Task::new(1002, String::from("test_content2"));
+    let task1: Task = Task::new(1001, String::from("test_content1"), None);
+    let task2: Task = Task::new(
+        1002,
+        String::from("test_content2"),
+        Some("2000-01-01T12:00:00+00:00".parse().unwrap()),
+    );
     let tasks: Vec<Task> = vec![task1, task2];
 
     let test_path: FilePath = FilePath::new(Some(String::from("test_save_and_load.json")));
