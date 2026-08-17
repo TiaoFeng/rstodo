@@ -179,7 +179,7 @@ mod commands_test {
 
     #[test]
     fn test_change() {
-        let path: FilePath = FilePath::new(Some(String::from("test2_commands.json")));
+        let path: FilePath = FilePath::new(Some(String::from("test3_commands.json")));
         let _ = fs::remove_file(path.path());
         let content1 = String::from("test_content1");
         let deadline1 = String::from("2000-01-01T12:00:00");
