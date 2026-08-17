@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::time::to_local_time;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -52,17 +54,26 @@ impl Task {
     pub fn set_deadline(&mut self, deadline: Option<DateTime<Utc>>) {
         self.deadline = deadline;
     }
+}
 
-    pub fn print(&self) {
+impl fmt::Display for Task {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let status: &str = if self.completed { "✓" } else { " " };
-        let deadline: &str = match self.deadline {
-            None => "       No          ",
-            Some(t) => &to_local_time(&t).unwrap().to_string(),
-        };
-        println!(
-            "  [{}]   {:<3}    {}      {}",
-            status, self.id, deadline, self.content
-        );
+        match self.deadline {
+            None => write!(
+                f,
+                "  [{}]   {:<3}             No              {}",
+                status, self.id, self.content
+            ),
+            Some(t) => write!(
+                f,
+                "  [{}]   {:<3}    {}      {}",
+                status,
+                self.id,
+                to_local_time(&t).unwrap(),
+                self.content
+            ),
+        }
     }
 }
 

@@ -28,7 +28,7 @@ pub fn list_task(path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("status| id |         deadline         | task");
     for task in tasks {
-        task.print();
+        println!("{}", task);
     }
     Ok(())
 }
