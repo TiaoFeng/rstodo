@@ -17,6 +17,8 @@ struct Cli {
 enum Commands {
     Add {
         content: String,
+        #[arg(short = 'D', long)]
+        description: Option<String>,
         #[arg(short, long)]
         deadline: Option<String>,
     },
@@ -24,10 +26,15 @@ enum Commands {
         id: usize,
         #[arg(short, long)]
         content: Option<String>,
+        #[arg(short = 'D', long)]
+        description: Option<Option<String>>,
         #[arg(short, long)]
         deadline: Option<Option<String>>,
     },
     List,
+    Show {
+        id: usize,
+    },
     Done {
         id: usize,
     },
@@ -43,13 +50,19 @@ fn main() {
     let cli = Cli::parse();
     let path = FilePath::new(None);
     let result = match cli.command {
-        Commands::Add { content, deadline } => commands::add_task(content, &path, deadline),
+        Commands::Add {
+            content,
+            description,
+            deadline,
+        } => commands::add_task(content, &path, description, deadline),
         Commands::Change {
             id,
             content,
+            description,
             deadline,
-        } => commands::change_task(id, &path, content, deadline),
+        } => commands::change_task(id, &path, content, description, deadline),
         Commands::List => commands::list_task(&path),
+        Commands::Show { id } => commands::show_details(id, &path),
         Commands::Done { id } => commands::complete_task(id, &path),
         Commands::Undone { id } => commands::incomplete_task(id, &path),
         Commands::Delete { id } => commands::delete_task(id, &path),

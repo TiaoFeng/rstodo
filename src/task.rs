@@ -8,16 +8,24 @@ use serde::{Deserialize, Serialize};
 pub struct Task {
     id: usize,
     content: String,
+    #[serde(default)]
+    description: Option<String>,
     completed: bool,
     #[serde(default)]
     deadline: Option<DateTime<Utc>>,
 }
 
 impl Task {
-    pub fn new(id: usize, content: String, deadline: Option<DateTime<Utc>>) -> Task {
+    pub fn new(
+        id: usize,
+        content: String,
+        description: Option<String>,
+        deadline: Option<DateTime<Utc>>,
+    ) -> Task {
         Task {
             id,
             content,
+            description,
             completed: false,
             deadline,
         }
@@ -29,6 +37,10 @@ impl Task {
 
     pub fn _content(&self) -> &str {
         &self.content
+    }
+
+    pub fn description(&self) -> Option<String> {
+        self.description.clone()
     }
 
     pub fn _completed(&self) -> bool {
@@ -49,6 +61,10 @@ impl Task {
 
     pub fn set_content(&mut self, content: String) {
         self.content = content;
+    }
+
+    pub fn set_description(&mut self, description: Option<String>) {
+        self.description = description;
     }
 
     pub fn set_deadline(&mut self, deadline: Option<DateTime<Utc>>) {
@@ -82,8 +98,10 @@ fn test_task() {
     let id: usize = 1001;
     let content: String = String::from("test_content");
     let deadline: DateTime<Utc> = "2000-01-01T12:00:00+00:00".parse().unwrap();
-    let mut task: Task = Task::new(id, content.clone(), None);
+    let description = Some(String::from("test_description"));
+    let mut task: Task = Task::new(id, content.clone(), None, None);
     task.set_deadline(Some(deadline));
+    task.set_description(description.clone());
 
     assert_eq!(task.id(), id);
     assert_eq!(task._content(), content);
@@ -97,4 +115,5 @@ fn test_task() {
 
     // let deadline_wrong: DateTime<Utc> = "2000-01-10T12:00:00+00:00".parse().unwrap();
     assert_eq!(task._deadline(), Some(deadline));
+    assert_eq!(task.description(), description);
 }
