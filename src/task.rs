@@ -72,22 +72,28 @@ impl Task {
     }
 }
 
-impl fmt::Display for Task {
+pub struct TaskRow<'a> {
+    pub task: &'a Task,
+    pub no: usize,
+}
+
+impl fmt::Display for TaskRow<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let status: &str = if self.completed { "✓" } else { " " };
-        match self.deadline {
+        let task = self.task;
+        let status: &str = if task.completed { "✓" } else { " " };
+        match task.deadline {
             None => write!(
                 f,
                 "  [{}]   {:<3}             No              {}",
-                status, self.id, self.content
+                status, self.no, task.content
             ),
             Some(t) => write!(
                 f,
                 "  [{}]   {:<3}    {}      {}",
                 status,
-                self.id,
+                self.no,
                 to_local_time(&t).unwrap(),
-                self.content
+                task.content
             ),
         }
     }
@@ -106,13 +112,10 @@ fn test_task() {
     assert_eq!(task.id(), id);
     assert_eq!(task._content(), content);
     assert!(!task._completed());
-
     task.complete();
     assert!(task._completed());
-
     task.incomplete();
     assert!(!task._completed());
-
     // let deadline_wrong: DateTime<Utc> = "2000-01-10T12:00:00+00:00".parse().unwrap();
     assert_eq!(task._deadline(), Some(deadline));
     assert_eq!(task.description(), description);
