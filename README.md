@@ -6,7 +6,7 @@
 git clone https://github.com/TiaoFeng/rust-todo-cli.git
 ```
 ```
-cd rust-todo-cli-demo
+cd rust-todo-cli
 ```
 ```
 cargo build --release
@@ -16,61 +16,78 @@ cargo build --release
 ```
 $ cargo run -- add "提交issue"
 $ cargo run -- add "修改代码" -d 2000-1-1
+$ cargo run -- add "提交commit" -d 2000-1-2 -D "修复潜在的bug"
 $ cargo run -- list
 status| id |         deadline         | task
-  [ ]   1             No                提交issue
+  [ ]   1               No              提交issue
   [ ]   2      2000-01-01 00:00:00      修改代码
+  [ ]   3      2000-01-02 00:00:00      提交commit    --Show desc
 $ cargo run -- done 1
 $ cargo run -- list
 status| id |         deadline         | task
-  [✓]   1             No                提交issue
+  [✓]   1               No              提交issue
   [ ]   2      2000-01-01 00:00:00      修改代码
+  [ ]   3      2000-01-02 00:00:00      提交commit    --Show desc
+$ cargo run -- show 3
+status| id |         deadline         | task
+  [ ]   3      2000-01-02 00:00:00      提交commit
+description:
+修复潜在的bug
 $ cargo run -- change 2 -c "修复bug" -d 2000-1-1T12:00:00
 $ cargo run -- list
 status| id |         deadline         | task
-  [✓]   1             No                提交issue
+  [✓]   1               No              提交issue
   [ ]   2      2000-01-01 12:00:00      修复bug
+  [ ]   3      2000-01-02 00:00:00      提交commit    --Show desc
 ```
 
 ## 指令
 #### 1. 添加 task 项目
 ```
-./target/release/rust-todo-cli-demo -- add "{content}" -d {%Y-%m-%dT%h:%m:%s}
+./target/release/rust-todo-cli -- add "{content}" -d {%Y-%m-%dT%h:%m:%s}
 ```
-可选参数（deadline）
+可选参数（description，deadline）
 ```
+-D "{description}"
 -d {%Y-%m-%d}
 -d {%Y-%m-%dT%h:%m:%s}
 ```
 #### 2. 修改 task 条目
 ```
-./target/release/rust-todo-cli-demo -- change {id} -c "{content}" -d {%Y-%m-%dT%h:%m:%s}
+./target/release/rust-todo-cli -- change {id} -c "{content}" -D "{description}" -d {%Y-%m-%dT%h:%m:%s}
 ```
-可选参数（content，deadline）
+可选参数（content，description，deadline）
 ```
--c {"content"}
+-c "{content}"
+-D    # 注释：-D 代表清空description
+-D "{description}"
 -d    # 注释：-d 代表清空deadline
 -d {%Y-%m-%d}
 -d {%Y-%m-%dT%h:%m:%s}
 ```
 #### 3. 展示 todo 清单
 ```text
-./target/release/rust-todo-cli-demo -- list
+./target/release/rust-todo-cli -- list
 ```
 
-#### 4. 标记 task 完成
+#### 4. 详细展示条目
 ```text
-./target/release/rust-todo-cli-demo -- done {id}
+./target/release/rust-todo-cli -- show {id}
 ```
 
-#### 5. 标记 task 未完成
+#### 5. 标记 task 完成
 ```text
-./target/release/rust-todo-cli-demo -- undone {id}
+./target/release/rust-todo-cli -- done {id}
 ```
 
-#### 6. 删除 task 条目
+#### 6. 标记 task 未完成
 ```text
-./target/release/rust-todo-cli-demo -- delete {id}
+./target/release/rust-todo-cli -- undone {id}
+```
+
+#### 7. 删除 task 条目
+```text
+./target/release/rust-todo-cli -- delete {id}
 ```
 
 ## 项目结构
