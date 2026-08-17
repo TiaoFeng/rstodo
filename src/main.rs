@@ -24,7 +24,7 @@ enum Commands {
         deadline: Option<String>,
     },
     Change {
-        id: usize,
+        no: usize,
         #[arg(short, long)]
         content: Option<String>,
         #[arg(short = 'D', long)]
@@ -34,16 +34,16 @@ enum Commands {
     },
     List,
     Show {
-        id: usize,
+        no: usize,
     },
     Done {
-        id: usize,
+        no: usize,
     },
     Undone {
-        id: usize,
+        no: usize,
     },
     Delete {
-        id: usize,
+        no: usize,
     },
 }
 
@@ -57,16 +57,16 @@ fn main() {
             deadline,
         } => commands::add_task(content, &path, description, deadline),
         Commands::Change {
-            id,
+            no,
             content,
             description,
             deadline,
-        } => commands::change_task(id, &path, content, description, deadline),
+        } => commands::change_task(no, &path, content, description, deadline),
         Commands::List => commands::list_task(&path),
-        Commands::Show { id } => commands::show_details(id, &path),
-        Commands::Done { id } => commands::complete_task(id, &path),
-        Commands::Undone { id } => commands::incomplete_task(id, &path),
-        Commands::Delete { id } => commands::delete_task(id, &path),
+        Commands::Show { no } => commands::show_details(no, &path),
+        Commands::Done { no } => commands::complete_task(no, &path),
+        Commands::Undone { no } => commands::incomplete_task(no, &path),
+        Commands::Delete { no } => commands::delete_task(no, &path),
     };
     if let Err(e) = result {
         eprintln!("Error:{}", e);

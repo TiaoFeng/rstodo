@@ -64,7 +64,7 @@ status| no |         deadline         | task
 ```
 #### 2. 修改 task 条目
 ```
-./target/release/rust-todo-cli -- change {id} -c "{content}" -D "{description}" -d {%Y-%m-%dT%h:%m:%s}
+./target/release/rust-todo-cli -- change {no} -c "{content}" -D "{description}" -d {%Y-%m-%dT%h:%m:%s}
 ```
 可选参数（content，description，deadline）
 ```
@@ -82,22 +82,22 @@ status| no |         deadline         | task
 
 #### 4. 详细展示条目
 ```text
-./target/release/rust-todo-cli -- show {id}
+./target/release/rust-todo-cli -- show {no}
 ```
 
 #### 5. 标记 task 完成
 ```text
-./target/release/rust-todo-cli -- done {id}
+./target/release/rust-todo-cli -- done {no}
 ```
 
 #### 6. 标记 task 未完成
 ```text
-./target/release/rust-todo-cli -- undone {id}
+./target/release/rust-todo-cli -- undone {no}
 ```
 
 #### 7. 删除 task 条目
 ```text
-./target/release/rust-todo-cli -- delete {id}
+./target/release/rust-todo-cli -- delete {no}
 ```
 
 ## 项目结构
