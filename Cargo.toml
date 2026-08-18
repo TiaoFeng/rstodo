@@ -1,7 +1,8 @@
 [package]
 name = "rust-todo-cli"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
+repository = "https://github.com/TiaoFeng/rust-todo-cli"
 
 [dependencies]
 clap = { version = "4", features = ["derive"]}
@@ -9,3 +10,8 @@ serde = { version = "1", features = ["derive"]}
 serde_json = { version = "1"}
 chrono = { version = "0.4.45" , features = ["serde"]}
 comfy-table = "8.0.0"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
