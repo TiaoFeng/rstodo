@@ -7,6 +7,8 @@ mod time;
 use clap::{Parser, Subcommand};
 use storage::FilePath;
 
+use crate::task::Priority;
+
 #[derive(Parser)]
 #[command(name = "todo")]
 struct Cli {
@@ -22,6 +24,8 @@ enum Commands {
         description: Option<String>,
         #[arg(short, long)]
         deadline: Option<String>,
+        #[arg(short, long)]
+        priority: Option<Priority>,
     },
     Change {
         no: usize,
@@ -31,6 +35,8 @@ enum Commands {
         description: Option<Option<String>>,
         #[arg(short, long)]
         deadline: Option<Option<String>>,
+        #[arg(short, long)]
+        priority: Option<Option<Priority>>,
     },
     List,
     Show {
@@ -55,13 +61,15 @@ fn main() {
             content,
             description,
             deadline,
-        } => commands::add_task(content, &path, description, deadline),
+            priority,
+        } => commands::add_task(content, &path, description, deadline, priority),
         Commands::Change {
             no,
             content,
             description,
             deadline,
-        } => commands::change_task(no, &path, content, description, deadline),
+            priority,
+        } => commands::change_task(no, &path, content, description, deadline, priority),
         Commands::List => commands::list_task(&path),
         Commands::Show { no } => commands::show_details(no, &path),
         Commands::Done { no } => commands::complete_task(no, &path),

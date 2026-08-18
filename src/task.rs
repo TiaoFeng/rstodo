@@ -2,7 +2,31 @@ use std::fmt;
 
 use crate::time::to_local_time;
 use chrono::{DateTime, Utc};
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
+
+#[derive(
+    Debug, ValueEnum, Serialize, Deserialize, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord,
+)]
+pub enum Priority {
+    #[value(alias = "1")]
+    High,
+    #[value(alias = "2")]
+    Medium,
+    #[value(alias = "3")]
+    #[default]
+    Low,
+}
+
+impl fmt::Display for Priority {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Priority::High => write!(f, "High"),
+            Priority::Medium => write!(f, "Medium"),
+            Priority::Low => write!(f, "Low"),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct Task {
@@ -13,6 +37,8 @@ pub struct Task {
     completed: bool,
     #[serde(default)]
     deadline: Option<DateTime<Utc>>,
+    #[serde(default)]
+    priority: Priority,
 }
 
 impl Task {
@@ -21,6 +47,7 @@ impl Task {
         content: String,
         description: Option<String>,
         deadline: Option<DateTime<Utc>>,
+        priority: Priority,
     ) -> Task {
         Task {
             id,
@@ -28,6 +55,7 @@ impl Task {
             description,
             completed: false,
             deadline,
+            priority,
         }
     }
 
@@ -51,6 +79,10 @@ impl Task {
         self.deadline
     }
 
+    pub fn _priority(&self) -> Priority {
+        self.priority
+    }
+
     pub fn complete(&mut self) {
         self.completed = true;
     }
@@ -70,6 +102,10 @@ impl Task {
     pub fn set_deadline(&mut self, deadline: Option<DateTime<Utc>>) {
         self.deadline = deadline;
     }
+
+    pub fn set_priority(&mut self, priority: Priority) {
+        self.priority = priority;
+    }
 }
 
 pub struct TaskRow<'a> {
@@ -77,25 +113,32 @@ pub struct TaskRow<'a> {
     pub no: usize,
 }
 
-impl fmt::Display for TaskRow<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl TaskRow<'_> {
+    pub fn to_table(&self) -> Vec<String> {
         let task = self.task;
         let status: &str = if task.completed { "✓" } else { " " };
-        match task.deadline {
-            None => write!(
-                f,
-                "  [{}]   {:<3}             No              {}",
-                status, self.no, task.content
-            ),
-            Some(t) => write!(
-                f,
-                "  [{}]   {:<3}    {}      {}",
-                status,
-                self.no,
-                to_local_time(&t).unwrap(),
-                task.content
-            ),
+        let deadline = match task.deadline {
+            None => String::from("No"),
+            Some(t) => to_local_time(&t).unwrap().to_string(),
+        };
+        let description = task.description.as_ref().map(|_| String::from("Show desc"));
+        if let Some(more) = description {
+            return vec![
+                status.to_string(),
+                self.no.to_string(),
+                task.priority.to_string(),
+                deadline,
+                task.content.clone(),
+                more,
+            ];
         }
+        vec![
+            status.to_string(),
+            self.no.to_string(),
+            task.priority.to_string(),
+            deadline,
+            task.content.clone(),
+        ]
     }
 }
 
@@ -105,7 +148,8 @@ fn test_task() {
     let content: String = String::from("test_content");
     let deadline: DateTime<Utc> = "2000-01-01T12:00:00+00:00".parse().unwrap();
     let description = Some(String::from("test_description"));
-    let mut task: Task = Task::new(id, content.clone(), None, None);
+    let priority = Priority::High;
+    let mut task: Task = Task::new(id, content.clone(), None, None, priority);
     task.set_deadline(Some(deadline));
     task.set_description(description.clone());
 
