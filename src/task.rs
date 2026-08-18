@@ -119,25 +119,20 @@ impl TaskRow<'_> {
         let status: &str = if task.completed { "✓" } else { " " };
         let deadline = match task.deadline {
             None => String::from("No"),
-            Some(t) => to_local_time(&t).unwrap().to_string(),
+            Some(t) => to_local_time(&t).to_string(),
         };
-        let description = task.description.as_ref().map(|_| String::from("Show desc"));
-        if let Some(more) = description {
-            return vec![
-                status.to_string(),
-                self.no.to_string(),
-                task.priority.to_string(),
-                deadline,
-                task.content.clone(),
-                more,
-            ];
-        }
+        let more = if task.description.is_some() {
+            String::from("Show desc")
+        } else {
+            String::new()
+        };
         vec![
             status.to_string(),
             self.no.to_string(),
             task.priority.to_string(),
             deadline,
             task.content.clone(),
+            more,
         ]
     }
 }

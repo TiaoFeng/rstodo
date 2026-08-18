@@ -1,8 +1,12 @@
 [package]
 name = "rust-todo-cli"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2024"
 repository = "https://github.com/TiaoFeng/rust-todo-cli"
+description = "A CLI tool for managing to-do lists"
+readme = "README.md"
+keywords = ["cli", "tool", "todo"]
+license = "MIT"
 
 [[bin]]
 name = "rstodo"
