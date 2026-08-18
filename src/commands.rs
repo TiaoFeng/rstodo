@@ -1,9 +1,23 @@
-use comfy_table::{Cell, CellAlignment, Table, presets};
+use std::cmp::Ordering;
+
+use clap::ValueEnum;
 
 use crate::error::{invalid_input, not_found};
-use crate::storage::{FilePath, load_tasks, update_tasks};
-use crate::task::{Priority, Task, TaskRow};
+use crate::io::cli_print::show_table;
+use crate::io::{
+    cli_print::list_table,
+    storage::{FilePath, load_tasks, update_tasks},
+};
+use crate::task::{Priority, Task};
 use crate::time::parse_deadline_input;
+
+#[derive(ValueEnum, Clone)]
+pub enum SortBy {
+    #[value(alias = "d")]
+    Deadline,
+    #[value(alias = "p")]
+    Priority,
+}
 
 pub fn add_task(
     content: String,
@@ -30,55 +44,41 @@ pub fn add_task(
     })
 }
 
-pub fn list_task(path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
-    let tasks: Vec<Task> = load_tasks(path)?;
-    if tasks.is_empty() {
-        println!("No tasks");
-        return Ok(());
+pub fn list_task(path: &FilePath, sort: Option<SortBy>) -> Result<(), Box<dyn std::error::Error>> {
+    if sort.is_none() {
+        let tasks = load_tasks(path)?;
+        if tasks.is_empty() {
+            println!("No tasks");
+            Ok(())
+        } else {
+            let table = list_table(&tasks);
+            println!("{}", table);
+            Ok(())
+        }
+    } else {
+        update_tasks(path, |tasks| {
+            if tasks.is_empty() {
+                println!("No tasks");
+                return Ok(());
+            }
+            match sort.unwrap() {
+                SortBy::Deadline => {
+                    tasks.sort_by(|a, b| match (a.deadline(), b.deadline()) {
+                        (Some(d1), Some(d2)) => d1.cmp(&d2),
+                        (Some(_), None) => Ordering::Less,
+                        (None, Some(_)) => Ordering::Greater,
+                        (None, None) => Ordering::Equal,
+                    });
+                }
+                SortBy::Priority => {
+                    tasks.sort_by_key(|t| t.priority());
+                }
+            }
+            let table = list_table(tasks);
+            println!("{}", table);
+            Ok(())
+        })
     }
-
-    let mut table = Table::new();
-    table.load_style(presets::ASCII_MARKDOWN);
-    table.set_header(vec![
-        Cell::new("status").set_alignment(CellAlignment::Center),
-        Cell::new("no").set_alignment(CellAlignment::Center),
-        Cell::new("priority").set_alignment(CellAlignment::Center),
-        Cell::new("deadline").set_alignment(CellAlignment::Center),
-        Cell::new("task").set_alignment(CellAlignment::Center),
-        Cell::new("more").set_alignment(CellAlignment::Center),
-    ]);
-
-    for (i, task) in tasks.iter().enumerate() {
-        let row = TaskRow { task, no: i + 1 };
-        table.add_row(row.to_table());
-    }
-
-    table
-        .column_mut(0)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Center);
-    table
-        .column_mut(1)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Left);
-    table
-        .column_mut(2)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Center);
-    table
-        .column_mut(3)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Center);
-    table
-        .column_mut(4)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Left);
-    table
-        .column_mut(5)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Center);
-    println!("{}", table);
-    Ok(())
 }
 
 pub fn show_details(no: usize, path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
@@ -92,44 +92,8 @@ pub fn show_details(no: usize, path: &FilePath) -> Result<(), Box<dyn std::error
         .get(no.checked_sub(1).ok_or_else(not_found)?)
         .ok_or_else(not_found)?;
 
-    let mut table = Table::new();
-    table.load_style(presets::ASCII_MARKDOWN);
-    table.set_header(vec![
-        Cell::new("status").set_alignment(CellAlignment::Center),
-        Cell::new("no").set_alignment(CellAlignment::Center),
-        Cell::new("priority").set_alignment(CellAlignment::Center),
-        Cell::new("deadline").set_alignment(CellAlignment::Center),
-        Cell::new("task").set_alignment(CellAlignment::Center),
-        Cell::new("more").set_alignment(CellAlignment::Center),
-    ]);
-    let row = TaskRow { task, no };
-    table.add_row(row.to_table());
-
-    table
-        .column_mut(0)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Center);
-    table
-        .column_mut(1)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Left);
-    table
-        .column_mut(2)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Center);
-    table
-        .column_mut(3)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Center);
+    let table = show_table(task, no);
     println!("{}", table);
-    table
-        .column_mut(4)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Left);
-    table
-        .column_mut(5)
-        .unwrap()
-        .set_cell_alignment(CellAlignment::Center);
 
     println!("-Description-");
     if task.description().is_none() {
@@ -212,8 +176,8 @@ pub fn change_task(
 #[cfg(test)]
 mod commands_test {
     use crate::{
-        commands::{add_task, change_task, delete_task, list_task, show_details},
-        storage::*,
+        commands::{SortBy, add_task, change_task, delete_task, list_task, show_details},
+        io::storage::*,
         task::*,
     };
     use std::fs;
@@ -239,7 +203,7 @@ mod commands_test {
         add_task(content3, &path, description3, deadline3, priority3).unwrap();
 
         println!("----add打印测试----");
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
         println!("----show打印细节测试----");
         show_details(2, &path).unwrap();
     }
@@ -265,9 +229,9 @@ mod commands_test {
         let priority3 = Some(Priority::Medium);
         add_task(content3, &path, description3, deadline3, priority3).unwrap();
         println!("----delete打印测试----");
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
         delete_task(2, &path).unwrap();
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
     }
 
     #[test]
@@ -292,11 +256,11 @@ mod commands_test {
         add_task(content3, &path, description3, deadline3, priority3).unwrap();
 
         println!("----删除1description----");
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
         change_task(1, &path, None, Some(None), None, None).unwrap();
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
         println!("----修改1content,description,删除1deadline----");
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
         change_task(
             1,
             &path,
@@ -306,9 +270,9 @@ mod commands_test {
             None,
         )
         .unwrap();
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
         println!("----修改1deadline----");
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
         change_task(
             1,
             &path,
@@ -318,14 +282,41 @@ mod commands_test {
             None,
         )
         .unwrap();
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
         println!("----修改1priority----");
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
         change_task(1, &path, None, None, None, Some(Some(Priority::High))).unwrap();
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
         println!("----删除2priority----");
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
         change_task(2, &path, None, None, None, Some(None)).unwrap();
-        list_task(&path).unwrap();
+        list_task(&path, None).unwrap();
+    }
+
+    #[test]
+    fn test_sort() {
+        let path: FilePath = FilePath::new(Some(String::from("test4_commands.json")));
+        let _ = fs::remove_file(path.path());
+        let content1 = String::from("test_content1");
+        let deadline1 = String::from("2000-01-01T12:00:00");
+        let description1 = Some(String::from("test_description1"));
+        add_task(content1, &path, description1, Some(deadline1), None).unwrap();
+
+        let content2 = String::from("test_content2");
+        let deadline2 = String::from("2000-01-01T18:00:00");
+        let description2 = Some(String::from("test_description2"));
+        let priority2 = Some(Priority::High);
+        add_task(content2, &path, description2, Some(deadline2), priority2).unwrap();
+
+        let content3 = String::from("test_content3");
+        let deadline3 = None;
+        let description3 = None;
+        let priority3 = Some(Priority::Medium);
+        add_task(content3, &path, description3, deadline3, priority3).unwrap();
+
+        println!("----按照deadline排序----");
+        list_task(&path, Some(SortBy::Deadline)).unwrap();
+        println!("----按照priority排序----");
+        list_task(&path, Some(SortBy::Priority)).unwrap();
     }
 }

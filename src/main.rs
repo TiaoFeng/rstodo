@@ -1,12 +1,13 @@
 mod commands;
 mod error;
-mod storage;
+mod io;
 mod task;
 mod time;
 
 use clap::{Parser, Subcommand};
-use storage::FilePath;
+use io::storage::FilePath;
 
+use crate::commands::SortBy;
 use crate::task::Priority;
 
 #[derive(Parser)]
@@ -38,7 +39,9 @@ enum Commands {
         #[arg(short, long)]
         priority: Option<Option<Priority>>,
     },
-    List,
+    List {
+        sort: Option<SortBy>,
+    },
     Show {
         no: usize,
     },
@@ -70,7 +73,7 @@ fn main() {
             deadline,
             priority,
         } => commands::change_task(no, &path, content, description, deadline, priority),
-        Commands::List => commands::list_task(&path),
+        Commands::List { sort } => commands::list_task(&path, sort),
         Commands::Show { no } => commands::show_details(no, &path),
         Commands::Done { no } => commands::complete_task(no, &path),
         Commands::Undone { no } => commands::incomplete_task(no, &path),

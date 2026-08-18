@@ -75,11 +75,11 @@ impl Task {
         self.completed
     }
 
-    pub fn _deadline(&self) -> Option<DateTime<Utc>> {
+    pub fn deadline(&self) -> Option<DateTime<Utc>> {
         self.deadline
     }
 
-    pub fn _priority(&self) -> Priority {
+    pub fn priority(&self) -> Priority {
         self.priority
     }
 
@@ -161,6 +161,6 @@ fn test_task() {
     task.incomplete();
     assert!(!task._completed());
     // let deadline_wrong: DateTime<Utc> = "2000-01-10T12:00:00+00:00".parse().unwrap();
-    assert_eq!(task._deadline(), Some(deadline));
+    assert_eq!(task.deadline(), Some(deadline));
     assert_eq!(task.description(), description);
 }
