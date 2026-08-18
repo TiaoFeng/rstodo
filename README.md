@@ -1,7 +1,27 @@
 # rstodo
-这是一个新手入门Rust程式语言的第一个小项目。演示项目实现了一个简单的 Todo CLI + 使用 json 文件持久化 Todo 清单。通过这个项目可以学习基本的程序设计、测试与错误处理。
 
-## 示例
+[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rust-todo-cli)](https://github.com/TiaoFeng/rust-todo-cli/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
+
+一个使用 Rust 编写的命令行 todo 工具。支持任务的增、删、改、查，以及优先级与截止时间管理。数据以 JSON 文件存储。本项目虽是作者初学 Rust 的练习项目，但目前仍在进一步优化与更新，已经具备比较完善的功能，可以作为日常的轻量化工具使用。
+
+## 特性
+
+- 支持任务的添加、修改、删除、完成/取消完成
+- 支持设置任务优先级（High / Medium / Low）与截止时间
+- 支持按截止时间或优先级排序展示
+- 支持任务详情查看（查看描述信息）
+- 基于 JSON 文件实现本地持久化
+- 终端使用类似 markdown 样式格式化输出
+
+## 安装
+
+下载预编译的最新版本：
+[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rust-todo-cli)](https://github.com/TiaoFeng/rust-todo-cli/releases/latest)
+或从源码构建（见下方「构建」章节）。
+
+## 快速开始（示例）
 ```
 $ cargo run -- add "提交issue"
 $ cargo run -- add "修改代码" -d 2000-1-1
@@ -66,10 +86,7 @@ $ cargo run -- list
 
 ```
 
-## 指令
-#### 0. 下载
-
-下载最新版本：[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rust-todo-cli)](https://github.com/TiaoFeng/rust-todo-cli/releases/latest)
+## 命令说明
 
 #### 1. 添加 task 项目
 ```
@@ -125,33 +142,32 @@ rstodo undone {no}
 rstodo delete {no}
 ```
 
-## 构建
+## 从源代码构建
 ```
 git clone https://github.com/TiaoFeng/rust-todo-cli.git
-```
-```
 cd rust-todo-cli
-```
-```
 cargo build --release
 ```
 
 ## 项目结构
+
 ```
-- src/main.rs           cli命令读取实现与主程序
-- src/commands.rs       实现add,list,complete,delete四种命令
-- src/io/storage.rs     实现todo list读取和保存
-- src/io/cli_print.rs   调用comfy_table实现返回Table供打印
-- src/task.rs           实现Task struct和Task的方法
-- src/time.rs           实现时间时区转换与时间输入格式转换
-- src/error.rs          项目中使用的错误类型
+src/
+├── main.rs           # CLI 命令解析与主程序入口
+├── commands.rs       # add / list / complete / delete 等命令实现
+├── task.rs           # Task 结构体与相关方法
+├── time.rs           # 时间格式转换与时区处理
+├── error.rs          # 项目中使用的错误类型
+└── io/
+    ├── storage.rs     # Todo list 的读取与保存
+    └── cli_print.rs   # 基于 comfy_table 的终端表格输出
 ```
 
 ## License
 
 本项目使用 [MIT License](LICENSE)。
 
-## 鸣谢
+## 声明与鸣谢
 
-- Claude Sonnet 5 、 DeepSeek V4 Flash 和 DeepSeek V4 Pro 提供技术指导。
+- Claude Sonnet 5、DeepSeek V4 Flash、DeepSeek V4 Pro、Mimo 2.5 Pro 和 KIMI K3 提供代码审查和技术指导。
 - [opencode](https://github.com/anomalyco/opencode) 提供优秀、开源的工具。
