@@ -17,54 +17,65 @@ cargo build --release
 $ cargo run -- add "提交issue"
 $ cargo run -- add "修改代码" -d 2000-1-1
 $ cargo run -- add "提交commit" -d 2000-1-2 -D "修复潜在的bug"
+$ cargo run -- add "审查代码" -d 2000-1-2 -p high
 $ cargo run -- list
-status| no |         deadline         | task
-  [ ]   1               No              提交issue
-  [ ]   2      2000-01-01 00:00:00      修改代码
-  [ ]   3      2000-01-02 00:00:00      提交commit    --Show desc
+| status | no | priority |       deadline      |    task    |    more   |
+|--------|----|----------|---------------------|------------|-----------|
+|        | 1  |    Low   |          No         | 提交issue  |           |
+|        | 2  |    Low   | 2000-01-01 00:00:00 | 修改代码   |           |
+|        | 3  |    Low   | 2000-01-02 00:00:00 | 提交commit | Show desc |
+|        | 4  |   High   | 2000-01-02 00:00:00 | 审查代码   |           |
 
 $ cargo run -- done 1
 $ cargo run -- list
-status| no |         deadline         | task
-  [✓]   1               No              提交issue
-  [ ]   2      2000-01-01 00:00:00      修改代码
-  [ ]   3      2000-01-02 00:00:00      提交commit    --Show desc
+| status | no | priority |       deadline      |    task    |    more   |
+|--------|----|----------|---------------------|------------|-----------|
+|    ✓   | 1  |    Low   |          No         | 提交issue  |           |
+|        | 2  |    Low   | 2000-01-01 00:00:00 | 修改代码   |           |
+|        | 3  |    Low   | 2000-01-02 00:00:00 | 提交commit | Show desc |
+|        | 4  |   High   | 2000-01-02 00:00:00 | 审查代码   |           |
 
 $ cargo run -- show 3
-status| no |         deadline         | task
-  [ ]   3      2000-01-02 00:00:00      提交commit
+| status | no | priority |       deadline      |    task    |    more   |
+|--------|----|----------|---------------------|------------|-----------|
+|        | 3  |    Low   | 2000-01-02 00:00:00 | 提交commit | Show desc |
 -Description-
 修复潜在的bug
 
-$ cargo run -- change 2 -c "修复bug" -d 2000-1-1T12:00:00
+$ cargo run -- change 2 -c "修复bug" -d 2000-1-1T12:00:00 -p high
 $ cargo run -- list
-status| no |         deadline         | task
-  [✓]   1               No              提交issue
-  [ ]   2      2000-01-01 12:00:00      修复bug
-  [ ]   3      2000-01-02 00:00:00      提交commit    --Show desc
+| status | no | priority |       deadline      |    task    |    more   |
+|--------|----|----------|---------------------|------------|-----------|
+|    ✓   | 1  |    Low   |          No         | 提交issue  |           |
+|        | 2  |   High   | 2000-01-01 12:00:00 | 修复bug    |           |
+|        | 3  |    Low   | 2000-01-02 00:00:00 | 提交commit | Show desc |
+|        | 4  |   High   | 2000-01-02 00:00:00 | 审查代码   |           |
 
 $ cargo run -- delete 1
 $ cargo run -- list
-status| no |         deadline         | task
-  [ ]   1      2000-01-01 12:00:00      修复bug
-  [ ]   2      2000-01-02 00:00:00      提交commit    --Show desc
+| status | no | priority |       deadline      |    task    |    more   |
+|--------|----|----------|---------------------|------------|-----------|
+|        | 1  |   High   | 2000-01-01 12:00:00 | 修复bug    |           |
+|        | 2  |    Low   | 2000-01-02 00:00:00 | 提交commit | Show desc |
+|        | 3  |   High   | 2000-01-02 00:00:00 | 审查代码   |           |
 
 ```
 
 ## 指令
 #### 1. 添加 task 项目
 ```
-./target/release/rust-todo-cli -- add "{content}" -d {%Y-%m-%dT%h:%m:%s}
+./target/release/rust-todo-cli -- add "{content}" -d {%Y-%m-%dT%h:%m:%s} -D "{description}" -p {priority}
 ```
 可选参数（description，deadline）
 ```
 -D "{description}"
 -d {%Y-%m-%d}
 -d {%Y-%m-%dT%h:%m:%s}
+-p {priority}    # 注释：包括high, medium, low, 可以输入数字1,2,3 默认low
 ```
 #### 2. 修改 task 条目
 ```
-./target/release/rust-todo-cli -- change {no} -c "{content}" -D "{description}" -d {%Y-%m-%dT%h:%m:%s}
+./target/release/rust-todo-cli -- change {no} -c "{content}" -D "{description}" -d {%Y-%m-%dT%h:%m:%s} -p {priority}
 ```
 可选参数（content，description，deadline）
 ```
@@ -74,6 +85,8 @@ status| no |         deadline         | task
 -d    # 注释：-d 代表清空deadline
 -d {%Y-%m-%d}
 -d {%Y-%m-%dT%h:%m:%s}
+-p   # 注释：-p 代表清空priority, 默认为low
+-p {priority}    # 注释：包括high, medium, low, 可以输入数字1,2,3
 ```
 #### 3. 展示 todo 清单
 ```text
