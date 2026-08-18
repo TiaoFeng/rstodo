@@ -1,17 +1,6 @@
 # rust-todo-cli
 这是一个新手入门Rust程式语言的第一个小项目。演示项目实现了一个简单的 Todo CLI + 使用 json 文件持久化 Todo 清单。通过这个项目可以学习基本的程序设计、测试与错误处理。
 
-## 构建
-```
-git clone https://github.com/TiaoFeng/rust-todo-cli.git
-```
-```
-cd rust-todo-cli
-```
-```
-cargo build --release
-```
-
 ## 示例
 ```
 $ cargo run -- add "提交issue"
@@ -78,9 +67,13 @@ $ cargo run -- list
 ```
 
 ## 指令
+#### 0. 下载
+
+下载最新版本：[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rust-todo-cli)](https://github.com/TiaoFeng/rust-todo-cli/releases/latest)
+
 #### 1. 添加 task 项目
 ```
-./target/release/rust-todo-cli -- add "{content}" -d {%Y-%m-%dT%h:%m:%s} -D "{description}" -p {priority}
+rstodo add "{content}" -d {%Y-%m-%dT%h:%m:%s} -D "{description}" -p {priority}
 ```
 可选参数（description，deadline）
 ```
@@ -91,7 +84,7 @@ $ cargo run -- list
 ```
 #### 2. 修改 task 条目
 ```
-./target/release/rust-todo-cli -- change {no} -c "{content}" -D "{description}" -d {%Y-%m-%dT%h:%m:%s} -p {priority}
+rstodo change {no} -c "{content}" -D "{description}" -d {%Y-%m-%dT%h:%m:%s} -p {priority}
 ```
 可选参数（content，description，deadline）
 ```
@@ -105,31 +98,42 @@ $ cargo run -- list
 -p {priority}    # 注释：包括high, medium, low, 可以输入数字1,2,3
 ```
 #### 3. 展示 todo 清单
-```text
-./target/release/rust-todo-cli -- list {SortBy}
+```
+rstodo list {SortBy}
 ```
 可选参数（SortBy）
 ```
 {SortBy}    #注释：SortBy包括"d"（按deadline排序），"p"（按priority排序）
 ```
 #### 4. 详细展示条目
-```text
-./target/release/rust-todo-cli -- show {no}
+```
+rstodo show {no}
 ```
 
 #### 5. 标记 task 完成
-```text
-./target/release/rust-todo-cli -- done {no}
+```
+rstodo done {no}
 ```
 
 #### 6. 标记 task 未完成
-```text
-./target/release/rust-todo-cli -- undone {no}
+```
+rstodo undone {no}
 ```
 
 #### 7. 删除 task 条目
-```text
-./target/release/rust-todo-cli -- delete {no}
+```
+rstodo delete {no}
+```
+
+## 构建
+```
+git clone https://github.com/TiaoFeng/rust-todo-cli.git
+```
+```
+cd rust-todo-cli
+```
+```
+cargo build --release
 ```
 
 ## 项目结构
