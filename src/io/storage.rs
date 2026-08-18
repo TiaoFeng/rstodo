@@ -1,6 +1,7 @@
 use crate::task::Task;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::path::PathBuf;
 
 pub enum FilePath {
     Custom(String),
@@ -18,7 +19,12 @@ impl FilePath {
     pub fn path(&self) -> String {
         match self {
             FilePath::Custom(p) => p.clone(),
-            FilePath::Default => String::from("task.json"),
+            FilePath::Default => {
+                let mut dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+                dir.push("rstodo");
+                dir.push("task.json");
+                dir.to_string_lossy().to_string()
+            }
         }
     }
 }
@@ -27,6 +33,9 @@ pub fn update_tasks(
     path: &FilePath,
     f: impl FnOnce(&mut Vec<Task>) -> Result<(), Box<dyn std::error::Error>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = std::path::Path::new(&path.path()).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let file = File::options()
         .read(true)
         .write(true)
