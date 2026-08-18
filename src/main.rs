@@ -11,7 +11,6 @@ use crate::commands::SortBy;
 use crate::task::Priority;
 
 #[derive(Parser)]
-#[command(name = "todo")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -80,7 +79,7 @@ fn main() {
         Commands::Delete { no } => commands::delete_task(no, &path),
     };
     if let Err(e) = result {
-        eprintln!("Error:{}", e);
+        eprintln!("Error: {}", e);
         std::process::exit(1);
     }
 }
