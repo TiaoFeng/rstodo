@@ -95,16 +95,16 @@ fn test_sort() {
     let out_string = out_tostring(&out);
     let high = out_string
         .find("cli_test3")
-        .expect(&format!("Not found in: \n {}", out_string));
+        .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
     let mid = out_string
         .find("cli_test4")
-        .expect(&format!("Not found in: \n {}", out_string));
+        .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
     let low1 = out_string
         .find("cli_test1")
-        .expect(&format!("Not found in: \n {}", out_string));
+        .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
     let low2 = out_string
         .find("cli_test2")
-        .expect(&format!("Not found in: \n {}", out_string));
+        .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
     assert!(high < mid && mid < low1 && mid < low2);
     let _ = fs::remove_file(&file);
 }
