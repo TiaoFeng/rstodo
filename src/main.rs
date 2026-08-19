@@ -12,6 +12,8 @@ use crate::task::Priority;
 
 #[derive(Parser)]
 struct Cli {
+    #[arg(long, global = true)]
+    file: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -57,7 +59,7 @@ enum Commands {
 
 fn main() {
     let cli = Cli::parse();
-    let path = FilePath::new(None);
+    let path = FilePath::new(cli.file);
     let result = match cli.command {
         Commands::Add {
             content,

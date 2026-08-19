@@ -89,7 +89,30 @@ $ cargo run -- list
 ```
 
 ## 命令说明
+### 全局命令
+所有命令都支持以下全局参数：
+```
+--file <FILE> 指定要操作的 JSON 文件
+```
+默认file地址：
 
+|平台|路径|
+|---|---|
+|Linux|~/.local/share/rstodo/task.json|
+|macOS|~/Library/Application Support/rstodo/task.json|
+|Windows|C:\Users\<user>\AppData\Local\rstodo\task.json|
+
+全局参数可以放在命令的任何位置：
+
+```
+# 放在命令前
+rstodo --file ./test1_commands.json list
+
+# 放在命令后
+rstodo list --file ./test1_commands.json
+```
+
+### 子命令
 #### 1. 添加 task 项目
 ```
 rstodo add "{content}" -d {%Y-%m-%dT%h:%m:%s} -D "{description}" -p {priority}
@@ -128,24 +151,21 @@ rstodo list {SortBy}
 ```
 rstodo show {no}
 ```
-
 #### 5. 标记 task 完成
 ```
 rstodo done {no}
 ```
-
 #### 6. 标记 task 未完成
 ```
 rstodo undone {no}
 ```
-
 #### 7. 删除 task 条目
 ```
 rstodo delete {no}
 ```
 
 ## 从源代码构建
-```
+```bash
 git clone https://github.com/TiaoFeng/rust-todo-cli.git
 cd rust-todo-cli
 cargo build --release

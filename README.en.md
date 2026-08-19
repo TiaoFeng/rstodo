@@ -87,6 +87,28 @@ $ cargo run -- list
 ```
 
 ## Command Description
+### Global Commands
+All commands support the following global parameters:
+```
+--file <FILE> Specify the JSON file to be processed
+```
+Default file path:
+
+|Platform|Path|
+|---|---|
+|Linux|~/.local/share/rstodo/task.json|
+|macOS|~/Library/Application Support/rstodo/task.json|
+|Windows|C:\Users\<user>\AppData\Local\rstodo\task.json|
+
+Global parameters can be placed anywhere in a command:
+```
+# Place it before the command
+rstodo --file ./test1_commands.json list
+
+# Place it after the command
+rstodo list --file ./test1_commands.json
+```
+### Subcommand
 #### 1. Add a task
 ```
 rstodo add "{content}" -d {%Y-%m-%dT%h:%m:%s} -D "{description}" -p {priority}
@@ -141,7 +163,7 @@ rstodo delete {no}
 ```
 
 ## Build from Source Code
-```
+```bash
 git clone https://github.com/TiaoFeng/rust-todo-cli.git
 cd rust-todo-cli
 cargo build --release
