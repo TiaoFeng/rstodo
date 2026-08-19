@@ -163,6 +163,9 @@ fn test_error() {
 
     let out = run(&["add", "err_add", "-d", "not-a-date"], &file);
     assert_eq!(out.status.code(), Some(1));
+    let err = err_tostring(&out);
+    assert!(err.contains("{%Y-%m-%d}"));
+    assert!(err.contains("{%Y-%m-%dT%h:%M:%S}"));
     assert!(fs::read_to_string(&file).unwrap().is_empty());
     let _ = fs::remove_file(&file);
 }

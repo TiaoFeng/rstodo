@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use clap::ValueEnum;
 
-use crate::error::{invalid_input, not_found};
+use crate::error::{invalid_input_noting_change, not_found};
 use crate::io::cli_print::show_table;
 use crate::io::{
     cli_print::list_table,
@@ -142,7 +142,7 @@ pub fn change_task(
     priority: Option<Option<Priority>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if content.is_none() && deadline.is_none() && description.is_none() && priority.is_none() {
-        return Err(invalid_input());
+        return Err(invalid_input_noting_change());
     }
     update_tasks(path, |tasks| {
         let idx = no.checked_sub(1).ok_or_else(not_found)?;
