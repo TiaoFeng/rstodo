@@ -137,25 +137,45 @@ impl TaskRow<'_> {
     }
 }
 
-#[test]
-fn test_task() {
-    let id: usize = 1001;
-    let content: String = String::from("test_content");
-    let deadline: DateTime<Utc> = "2000-01-01T12:00:00+00:00".parse().unwrap();
-    let description = Some(String::from("test_description"));
-    let priority = Priority::High;
-    let mut task: Task = Task::new(id, content.clone(), None, None, priority);
-    task.set_deadline(Some(deadline));
-    task.set_description(description.clone());
+#[cfg(test)]
+mod task_test {
+    use crate::task::*;
+    #[test]
+    fn test_task() {
+        let id: usize = 1001;
+        let content: String = String::from("test_content1");
+        let deadline1: DateTime<Utc> = "2000-01-01T12:00:00+00:00".parse().unwrap();
+        let description = Some(String::from("test_description1"));
+        let priority = Priority::default();
+        let mut task: Task = Task::new(id, content, description, Some(deadline1), priority);
 
-    assert_eq!(task.id(), id);
-    assert_eq!(task._content(), content);
-    assert!(!task._completed());
-    task.complete();
-    assert!(task._completed());
-    task.incomplete();
-    assert!(!task._completed());
-    // let deadline_wrong: DateTime<Utc> = "2000-01-10T12:00:00+00:00".parse().unwrap();
-    assert_eq!(task.deadline(), Some(deadline));
-    assert_eq!(task.description(), description);
+        assert_eq!(task.id(), 1001);
+        assert_eq!(task._content(), "test_content1".to_string());
+        assert_eq!(task.description(), Some("test_description1".to_string()));
+        assert_eq!(task.priority(), Priority::Low);
+        assert!(!task._completed());
+
+        let expected = "2000-01-01T12:00:00+00:00".parse().unwrap();
+        assert_eq!(task.deadline(), Some(expected));
+
+        task.set_content("test_content2".to_string());
+        assert_eq!(task._content(), "test_content2".to_string());
+        task.set_description(Some("test_description2".to_string()));
+        assert_eq!(task.description(), Some("test_description2".to_string()));
+        task.set_description(None);
+        assert!(task.description().is_none());
+        task.complete();
+        assert!(task._completed());
+        task.incomplete();
+        assert!(!task._completed());
+        task.set_priority(Priority::High);
+        assert_eq!(task.priority(), Priority::High);
+
+        let deadline2: DateTime<Utc> = "2000-01-02T12:00:00+00:00".parse().unwrap();
+        task.set_deadline(Some(deadline2));
+        let expected = "2000-01-02T12:00:00+00:00".parse().unwrap();
+        assert_eq!(task.deadline(), Some(expected));
+        task.set_deadline(None);
+        assert!(task.deadline().is_none());
+    }
 }

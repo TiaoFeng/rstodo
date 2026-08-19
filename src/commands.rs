@@ -175,104 +175,189 @@ pub fn change_task(
 
 #[cfg(test)]
 mod commands_test {
-    use crate::{
-        commands::{SortBy, add_task, change_task, delete_task, list_task, show_details},
-        io::storage::*,
-        task::*,
-    };
+    use crate::{commands::*, time::to_utc};
+    use chrono::NaiveDateTime;
     use std::fs;
+
+    fn temp_path(name: &str) -> String {
+        std::env::temp_dir()
+            .join(format!("rstodo_test_{}.json", name))
+            .to_string_lossy()
+            .to_string()
+    }
+
+    fn set_test_task(path: &FilePath) {
+        add_task(
+            "task1".into(),
+            path,
+            Some("desc1".into()),
+            Some("2000-01-01T12:00:00".into()),
+            Some(Priority::High),
+        )
+        .unwrap();
+        add_task("task2".into(), path, None, None, None).unwrap();
+        add_task(
+            "task3".into(),
+            path,
+            None,
+            Some("2000-01-02T08:00:00".into()),
+            Some(Priority::Medium),
+        )
+        .unwrap();
+    }
+
     #[test]
-    fn test_add_list_show() {
-        let path: FilePath = FilePath::new(Some(String::from("test1_commands.json")));
-        let _ = fs::remove_file(path.path());
-        let content1 = String::from("test_content1");
-        let deadline1 = String::from("2000-01-01T12:00:00");
-        let description1 = Some(String::from("test_description1"));
-        add_task(content1, &path, description1, Some(deadline1), None).unwrap();
+    fn test_add() {
+        let file = temp_path("add");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+        // 测试1：全子项写入
+        add_task(
+            "test_add1".to_string(),
+            &path,
+            Some("about_assert_add_test".to_string()),
+            Some("2000-01-01T12:00:00".to_string()),
+            Some(Priority::High),
+        )
+        .unwrap();
 
-        let content2 = String::from("test_content2");
-        let deadline2 = String::from("2000-01-01T18:00:00");
-        let description2 = Some(String::from("test_description2"));
-        let priority2 = Some(Priority::High);
-        add_task(content2, &path, description2, Some(deadline2), priority2).unwrap();
+        let tasks = load_tasks(&path).unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id(), 1);
+        assert_eq!(tasks[0]._content(), "test_add1");
+        assert_eq!(
+            tasks[0].description(),
+            Some("about_assert_add_test".to_string())
+        );
+        assert_eq!(tasks[0].priority(), Priority::High);
+        assert!(!tasks[0]._completed());
 
-        let content3 = String::from("test_content3");
-        let deadline3 = None;
-        let description3 = None;
-        let priority3 = Some(Priority::Medium);
-        add_task(content3, &path, description3, deadline3, priority3).unwrap();
+        let expected = to_utc(
+            &NaiveDateTime::parse_from_str("2000-01-01T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(tasks[0].deadline(), Some(expected));
+        // 测试2：默认项测试
+        add_task("test_add2".to_string(), &path, None, None, None).unwrap();
+        let tasks = load_tasks(&path).unwrap();
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[1].id(), 2);
+        assert_eq!(tasks[1]._content(), "test_add2".to_string());
+        assert_eq!(tasks[1].priority(), Priority::Low);
+        assert!(tasks[1].deadline().is_none());
+        assert!(tasks[1].description().is_none());
+        assert!(!tasks[1]._completed());
+        // 测试3：deadline自动补全测试
+        add_task(
+            "test_add3".to_string(),
+            &path,
+            None,
+            Some("2000-01-02".to_string()),
+            None,
+        )
+        .unwrap();
+        let tasks = load_tasks(&path).unwrap();
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[2].id(), 3);
+        assert_eq!(tasks[2]._content(), "test_add3".to_string());
+        assert_eq!(tasks[2].priority(), Priority::Low);
+        assert!(tasks[2].description().is_none());
+        assert!(!tasks[2]._completed());
 
-        println!("----add打印测试----");
-        list_task(&path, None).unwrap();
-        println!("----show打印细节测试----");
-        show_details(2, &path).unwrap();
+        let expected = to_utc(
+            &NaiveDateTime::parse_from_str("2000-01-02T23:59:59", "%Y-%m-%dT%H:%M:%S").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(tasks[2].deadline(), Some(expected));
+        // 测试4：错误数据测试
+        assert!(
+            add_task(
+                "test_add3".to_string(),
+                &path,
+                None,
+                Some("not-a-date".to_string()),
+                None
+            )
+            .is_err()
+        );
+        assert_eq!(load_tasks(&path).unwrap().len(), 3);
+        let _ = fs::remove_file(&file);
+    }
+
+    #[test]
+    fn test_list_show() {
+        let file = temp_path("list_show");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+
+        assert!(list_task(&path, None).is_ok());
+        set_test_task(&path);
+        assert!(list_task(&path, Some(SortBy::Priority)).is_ok());
+        println!();
+        assert!(list_task(&path, Some(SortBy::Deadline)).is_ok());
+        println!();
+        assert!(show_details(2, &path).is_ok());
+        println!();
+
+        assert!(show_details(0, &path).is_err());
+        assert!(show_details(99, &path).is_err());
+        let _ = fs::remove_file(&file);
     }
 
     #[test]
     fn test_delete() {
-        let path: FilePath = FilePath::new(Some(String::from("test2_commands.json")));
-        let _ = fs::remove_file(path.path());
-        let content1 = String::from("test_content1");
-        let deadline1 = String::from("2000-01-01T12:00:00");
-        let description1 = Some(String::from("test_description1"));
-        add_task(content1, &path, description1, Some(deadline1), None).unwrap();
+        let file = temp_path("delete");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
 
-        let content2 = String::from("test_content2");
-        let deadline2 = String::from("2000-01-01T18:00:00");
-        let description2 = Some(String::from("test_description2"));
-        let priority2 = Some(Priority::High);
-        add_task(content2, &path, description2, Some(deadline2), priority2).unwrap();
+        assert!(delete_task(1, &path).is_err());
 
-        let content3 = String::from("test_content3");
-        let deadline3 = None;
-        let description3 = None;
-        let priority3 = Some(Priority::Medium);
-        add_task(content3, &path, description3, deadline3, priority3).unwrap();
-        println!("----delete打印测试----");
-        list_task(&path, None).unwrap();
+        set_test_task(&path);
         delete_task(2, &path).unwrap();
-        list_task(&path, None).unwrap();
+        let tasks = load_tasks(&path).unwrap();
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0]._content(), "task1".to_string());
+        assert_eq!(tasks[1]._content(), "task3".to_string());
+
+        assert!(delete_task(0, &path).is_err());
+        assert!(delete_task(99, &path).is_err());
+        assert_eq!(load_tasks(&path).unwrap().len(), 2);
+        let _ = fs::remove_file(&file);
     }
 
     #[test]
     fn test_change() {
-        let path: FilePath = FilePath::new(Some(String::from("test3_commands.json")));
-        let _ = fs::remove_file(path.path());
-        let content1 = String::from("test_content1");
-        let deadline1 = String::from("2000-01-01T12:00:00");
-        let description1 = Some(String::from("test_description1"));
-        add_task(content1, &path, description1, Some(deadline1), None).unwrap();
+        let file = temp_path("change");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
 
-        let content2 = String::from("test_content2");
-        let deadline2 = String::from("2000-01-01T18:00:00");
-        let description2 = Some(String::from("test_description2"));
-        let priority2 = Some(Priority::High);
-        add_task(content2, &path, description2, Some(deadline2), priority2).unwrap();
+        assert!(change_task(1, &path, None, None, None, None).is_err());
+        assert!(change_task(1, &path, Some("change_task1".to_string()), None, None, None).is_err());
 
-        let content3 = String::from("test_content3");
-        let deadline3 = None;
-        let description3 = None;
-        let priority3 = Some(Priority::Medium);
-        add_task(content3, &path, description3, deadline3, priority3).unwrap();
-
-        println!("----删除1description----");
-        list_task(&path, None).unwrap();
-        change_task(1, &path, None, Some(None), None, None).unwrap();
-        list_task(&path, None).unwrap();
-        println!("----修改1content,description,删除1deadline----");
-        list_task(&path, None).unwrap();
+        set_test_task(&path);
+        // 测试1：改content和desc
         change_task(
             1,
             &path,
-            Some(String::from("change_test")),
-            Some(Some(String::from("change_test_desc"))),
-            Some(None),
+            Some("change_task2".to_string()),
+            Some(Some("new_desc2".to_string())),
+            None,
             None,
         )
         .unwrap();
-        list_task(&path, None).unwrap();
-        println!("----修改1deadline----");
-        list_task(&path, None).unwrap();
+        let tasks = load_tasks(&path).unwrap();
+        assert_eq!(tasks[0]._content(), "change_task2".to_string());
+        assert_eq!(tasks[0].description(), Some("new_desc2".to_string()));
+
+        // 测试2：清空desc
+        change_task(1, &path, None, Some(None), None, None).unwrap();
+        assert!(load_tasks(&path).unwrap()[0].description().is_none());
+
+        // 测试3：清空deadline
+        change_task(1, &path, None, None, Some(None), None).unwrap();
+        assert!(load_tasks(&path).unwrap()[0].deadline().is_none());
+
+        // 测试4：设置deadline
         change_task(
             1,
             &path,
@@ -282,41 +367,75 @@ mod commands_test {
             None,
         )
         .unwrap();
-        list_task(&path, None).unwrap();
-        println!("----修改1priority----");
-        list_task(&path, None).unwrap();
-        change_task(1, &path, None, None, None, Some(Some(Priority::High))).unwrap();
-        list_task(&path, None).unwrap();
-        println!("----删除2priority----");
-        list_task(&path, None).unwrap();
-        change_task(2, &path, None, None, None, Some(None)).unwrap();
-        list_task(&path, None).unwrap();
+        let expected = to_utc(
+            &NaiveDateTime::parse_from_str("2000-02-01T23:59:59", "%Y-%m-%dT%H:%M:%S").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(load_tasks(&path).unwrap()[0].deadline(), Some(expected));
+
+        // 测试5：清空priority
+        change_task(3, &path, None, None, None, Some(None)).unwrap();
+        assert_eq!(load_tasks(&path).unwrap()[2].priority(), Priority::Low);
+
+        // 测试6：添加priority
+        change_task(3, &path, None, None, None, Some(Some(Priority::Medium))).unwrap();
+        assert_eq!(load_tasks(&path).unwrap()[2].priority(), Priority::Medium);
+
+        // 测试7：非法数据
+        let tasks = load_tasks(&path).unwrap();
+        assert!(
+            change_task(
+                1,
+                &path,
+                None,
+                None,
+                Some(Some("not-a-date".to_string())),
+                None
+            )
+            .is_err()
+        );
+        assert_eq!(load_tasks(&path).unwrap(), tasks);
+        let _ = fs::remove_file(&file);
     }
 
     #[test]
     fn test_sort() {
-        let path: FilePath = FilePath::new(Some(String::from("test4_commands.json")));
-        let _ = fs::remove_file(path.path());
-        let content1 = String::from("test_content1");
-        let deadline1 = String::from("2000-01-01T12:00:00");
-        let description1 = Some(String::from("test_description1"));
-        add_task(content1, &path, description1, Some(deadline1), None).unwrap();
+        let file = temp_path("sort");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+        set_test_task(&path);
 
-        let content2 = String::from("test_content2");
-        let deadline2 = String::from("2000-01-01T18:00:00");
-        let description2 = Some(String::from("test_description2"));
-        let priority2 = Some(Priority::High);
-        add_task(content2, &path, description2, Some(deadline2), priority2).unwrap();
-
-        let content3 = String::from("test_content3");
-        let deadline3 = None;
-        let description3 = None;
-        let priority3 = Some(Priority::Medium);
-        add_task(content3, &path, description3, deadline3, priority3).unwrap();
-
-        println!("----按照deadline排序----");
         list_task(&path, Some(SortBy::Deadline)).unwrap();
-        println!("----按照priority排序----");
+        let tasks = load_tasks(&path).unwrap();
+        let expected = to_utc(
+            &NaiveDateTime::parse_from_str("2000-01-01T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(tasks[0].deadline(), Some(expected));
+        assert!(tasks[2].deadline().is_none());
+
         list_task(&path, Some(SortBy::Priority)).unwrap();
+        let tasks = load_tasks(&path).unwrap();
+        assert_eq!(tasks[0].priority(), Priority::High);
+        assert_eq!(tasks[1].priority(), Priority::Medium);
+        assert_eq!(tasks[2].priority(), Priority::Low);
+        let _ = fs::remove_file(&file);
+    }
+
+    #[test]
+    fn test_done_undone() {
+        let file = temp_path("done_undone");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+        set_test_task(&path);
+
+        assert!(complete_task(0, &path).is_err());
+        assert!(complete_task(99, &path).is_err());
+
+        complete_task(1, &path).unwrap();
+        assert!(load_tasks(&path).unwrap()[0]._completed());
+        incomplete_task(1, &path).unwrap();
+        assert!(!load_tasks(&path).unwrap()[0]._completed());
+        let _ = fs::remove_file(&file);
     }
 }
