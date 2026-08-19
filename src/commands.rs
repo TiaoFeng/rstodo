@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use clap::ValueEnum;
 
-use crate::error::{invalid_input_noting_change, not_found};
+use crate::error::AppError;
 use crate::io::cli_print::show_table;
 use crate::io::{
     cli_print::list_table,
@@ -25,7 +25,7 @@ pub fn add_task(
     description: Option<String>,
     deadline: Option<String>,
     priority: Option<Priority>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), AppError> {
     let parsed_deadline = match deadline {
         Some(s) => Some(parse_deadline_input(&s)?),
         None => None,
@@ -44,7 +44,7 @@ pub fn add_task(
     })
 }
 
-pub fn list_task(path: &FilePath, sort: Option<SortBy>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn list_task(path: &FilePath, sort: Option<SortBy>) -> Result<(), AppError> {
     if sort.is_none() {
         let tasks = load_tasks(path)?;
         if tasks.is_empty() {
@@ -81,7 +81,7 @@ pub fn list_task(path: &FilePath, sort: Option<SortBy>) -> Result<(), Box<dyn st
     }
 }
 
-pub fn show_details(no: usize, path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
+pub fn show_details(no: usize, path: &FilePath) -> Result<(), AppError> {
     let tasks = load_tasks(path)?;
     if tasks.is_empty() {
         println!("No tasks");
@@ -89,8 +89,8 @@ pub fn show_details(no: usize, path: &FilePath) -> Result<(), Box<dyn std::error
     }
 
     let task = tasks
-        .get(no.checked_sub(1).ok_or_else(not_found)?)
-        .ok_or_else(not_found)?;
+        .get(no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?)
+        .ok_or(AppError::TaskNotFound { no })?;
 
     let table = show_table(task, no);
     println!("{}", table);
@@ -104,29 +104,29 @@ pub fn show_details(no: usize, path: &FilePath) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-pub fn complete_task(no: usize, path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
+pub fn complete_task(no: usize, path: &FilePath) -> Result<(), AppError> {
     update_tasks(path, |tasks| {
-        let idx = no.checked_sub(1).ok_or_else(not_found)?;
-        let task = tasks.get_mut(idx).ok_or_else(not_found)?;
+        let idx = no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?;
+        let task = tasks.get_mut(idx).ok_or(AppError::TaskNotFound { no })?;
         task.complete();
         Ok(())
     })
 }
 
-pub fn incomplete_task(no: usize, path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
+pub fn incomplete_task(no: usize, path: &FilePath) -> Result<(), AppError> {
     update_tasks(path, |tasks| {
-        let idx = no.checked_sub(1).ok_or_else(not_found)?;
-        let task = tasks.get_mut(idx).ok_or_else(not_found)?;
+        let idx = no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?;
+        let task = tasks.get_mut(idx).ok_or(AppError::TaskNotFound { no })?;
         task.incomplete();
         Ok(())
     })
 }
 
-pub fn delete_task(no: usize, path: &FilePath) -> Result<(), Box<dyn std::error::Error>> {
+pub fn delete_task(no: usize, path: &FilePath) -> Result<(), AppError> {
     update_tasks(path, |tasks| {
-        let idx = no.checked_sub(1).ok_or_else(not_found)?;
+        let idx = no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?;
         if idx >= tasks.len() {
-            return Err(not_found());
+            return Err(AppError::TaskNotFound { no });
         }
         tasks.remove(idx);
         Ok(())
@@ -140,13 +140,13 @@ pub fn change_task(
     description: Option<Option<String>>,
     deadline: Option<Option<String>>,
     priority: Option<Option<Priority>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), AppError> {
     if content.is_none() && deadline.is_none() && description.is_none() && priority.is_none() {
-        return Err(invalid_input_noting_change());
+        return Err(AppError::NothingToChange);
     }
     update_tasks(path, |tasks| {
-        let idx = no.checked_sub(1).ok_or_else(not_found)?;
-        let task = tasks.get_mut(idx).ok_or_else(not_found)?;
+        let idx = no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?;
+        let task = tasks.get_mut(idx).ok_or(AppError::TaskNotFound { no })?;
         if let Some(c) = content {
             task.set_content(c);
         }

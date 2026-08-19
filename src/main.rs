@@ -6,6 +6,7 @@ mod time;
 
 use clap::{Parser, Subcommand};
 use io::storage::FilePath;
+use std::error::Error;
 
 use crate::commands::SortBy;
 use crate::task::Priority;
@@ -80,8 +81,13 @@ fn main() {
         Commands::Undone { no } => commands::incomplete_task(no, &path),
         Commands::Delete { no } => commands::delete_task(no, &path),
     };
-    if let Err(e) = result {
-        eprintln!("Error: {}", e);
+    if let Err(apperr) = result {
+        eprintln!("Error: {}", apperr);
+        let mut source = apperr.source();
+        while let Some(src) = source {
+            eprintln!("Caused by: {}", src);
+            source = src.source();
+        }
         std::process::exit(1);
     }
 }
