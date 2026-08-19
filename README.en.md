@@ -1,29 +1,27 @@
 # rstodo
 
-**简体中文** | [English](README.en.md)
+[简体中文](README.md) | **English**
 
 [![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rust-todo-cli)](https://github.com/TiaoFeng/rust-todo-cli/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
 
-一个使用 Rust 编写的命令行 todo 工具。支持任务的增、删、改、查，以及优先级与截止时间管理。数据以 JSON 文件存储。本项目虽是作者初学 Rust 的练习项目，但目前仍在进一步优化与更新，已经具备比较完善的功能，可以作为日常的轻量化工具使用。
+A command-line to-do tool written in Rust. It supports adding, deleting, editing, and querying tasks, as well as managing priorities and due dates. Data is stored in JSON files. Although this project began as a practice project for the author while learning Rust, it is still being further optimized and updated. It already offers a fairly comprehensive set of features and can be used as a lightweight tool for everyday tasks.
 
-## 特性
+## Features
+- Supports adding, editing, deleting, and marking tasks as completed or uncompleted
+- Supports setting task priorities (High / Medium / Low) and due dates
+- Supports sorting and displaying tasks by due date or priority
+- Supports viewing task details (including descriptions)
+- Implements local persistence using JSON files
+- Outputs formatted text in a Markdown-like style in the terminal
 
-- 支持任务的添加、修改、删除、完成/取消完成
-- 支持设置任务优先级（High / Medium / Low）与截止时间
-- 支持按截止时间或优先级排序展示
-- 支持任务详情查看（查看描述信息）
-- 基于 JSON 文件实现本地持久化
-- 终端使用类似 markdown 样式格式化输出
-
-## 安装
-
-下载预编译的最新版本：
+## Installation
+Download the latest precompiled version:
 [![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rust-todo-cli)](https://github.com/TiaoFeng/rust-todo-cli/releases/latest)
-或从源码构建（见下方「构建」章节）。
+or build from source (see the “Building” section below).
 
-## 快速开始（示例）
+## Quick Start (Example)
 ```
 $ cargo run -- add "提交issue"
 $ cargo run -- add "修改代码" -d 2000-1-1
@@ -88,88 +86,85 @@ $ cargo run -- list
 
 ```
 
-## 命令说明
-
-#### 1. 添加 task 项目
+## Command Description
+#### 1. Add a task
 ```
 rstodo add "{content}" -d {%Y-%m-%dT%h:%m:%s} -D "{description}" -p {priority}
 ```
-可选参数（description，deadline）
+Optional Parameters（description，deadline）
 ```
 -D "{description}"
 -d {%Y-%m-%d}
 -d {%Y-%m-%dT%h:%m:%s}
--p {priority}    # 注释：包括high, medium, low, 可以输入数字1,2,3 默认low
+-p {priority}    # Note: Options include “high,” “medium,”
+                 # and “low.” You can enter the numbers 1, 2, or 3. The default is “low.”
 ```
-#### 2. 修改 task 条目
+#### 2. Edit a task
 ```
 rstodo change {no} -c "{content}" -D "{description}" -d {%Y-%m-%dT%h:%m:%s} -p {priority}
 ```
-可选参数（content，description，deadline）
+Optional Parameters（content，description，deadline）
 ```
 -c "{content}"
--D    # 注释：-D 代表清空description
+-D    # Note: -D clears the description
 -D "{description}"
--d    # 注释：-d 代表清空deadline
+-d    # Note: -d clears the deadline
 -d {%Y-%m-%d}
 -d {%Y-%m-%dT%h:%m:%s}
--p   # 注释：-p 代表清空priority, 默认为low
--p {priority}    # 注释：包括high, medium, low, 可以输入数字1,2,3
+-p   # Note: -p clears the priority; the default is “low.”
+-p {priority}    # Note: Includes “high,” “medium,” and “low”;
+                 # you can enter the numbers 1, 2, or 3.
 ```
-#### 3. 展示 todo 清单
+#### 3. Display task list
 ```
 rstodo list {SortBy}
 ```
-可选参数（SortBy）
+Optional Parameters（SortBy）
 ```
-{SortBy}    # 注释：SortBy包括"d"（按deadline排序），"p"（按priority排序）
+{SortBy}    # Note: SortBy includes “d” (sort by deadline) and “p” (sort by priority).
 ```
-#### 4. 详细展示条目
+#### 4. View task details
 ```
 rstodo show {no}
 ```
-
-#### 5. 标记 task 完成
+#### 5. Done a task
 ```
 rstodo done {no}
 ```
-
-#### 6. 标记 task 未完成
+#### 6. Undone a task
 ```
 rstodo undone {no}
 ```
-
-#### 7. 删除 task 条目
+#### 7. delete a task
 ```
 rstodo delete {no}
 ```
 
-## 从源代码构建
+## Build from Source Code
 ```
 git clone https://github.com/TiaoFeng/rust-todo-cli.git
 cd rust-todo-cli
 cargo build --release
 ```
 
-## 项目结构
-
+## Project Structure
 ```
 src/
-├── main.rs           # CLI 命令解析与主程序入口
-├── commands.rs       # add / list / complete / delete 等命令实现
-├── task.rs           # Task 结构体与相关方法
-├── time.rs           # 时间格式转换与时区处理
-├── error.rs          # 项目中使用的错误类型
+├── main.rs           # CLI Command Parsing and Main Program Entry Point
+├── commands.rs       # Implementation of commands such as add, list, complete, and delete
+├── task.rs           # The `Task` Structure and Related Methods
+├── time.rs           # Time Format Conversion and Time Zone Handling
+├── error.rs          # Error Types Used in the Project
 └── io/
-    ├── storage.rs     # Todo list 的读取与保存
-    └── cli_print.rs   # 基于 comfy_table 的终端表格输出
+    ├── storage.rs     # Reading and Saving a To-Do List
+    └── cli_print.rs   # Terminal table output based on comfy_table
 ```
 
 ## License
+This project is licensed under the [MIT License](LICENSE).
 
-本项目使用 [MIT License](LICENSE)。
+## Statement and Acknowledgments
 
-## 声明与鸣谢
-
-- Claude Sonnet 5、DeepSeek V4 Flash、DeepSeek V4 Pro、Mimo 2.5 Pro 和 KIMI K3 提供代码审查和技术指导。
-- [opencode](https://github.com/anomalyco/opencode) 提供优秀、开源的工具。
+- Claude Sonnet 5, DeepSeek V4 Flash, DeepSeek V4 Pro, Mimo 2.5 Pro, and KIMI K3 provide code reviews and technical guidance.
+- [opencode](https://github.com/anomalyco/opencode) offers excellent, open-source tools.
+- Translated with DeepL.com (free version)
