@@ -109,3 +109,117 @@ pub fn load_tasks(path: &FilePath) -> Result<Vec<Task>, AppError> {
         .map_err(|err| io_err("try to get a shared lock", path.path(), err))?;
     load_from(&file, &path.path())
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::{DateTime, Utc};
+
+    use crate::task::Priority;
+
+    use super::*;
+    use std::{fs, process};
+
+    fn temp_path(name: &str) -> String {
+        std::env::temp_dir()
+            .join(format!("{}_rstodo_test_{}.json", process::id(), name))
+            .to_string_lossy()
+            .to_string()
+    }
+
+    fn write_file(path: &str, contents: &str) {
+        fs::write(path, contents).unwrap();
+    }
+
+    fn set_test_task() -> Task {
+        let deadline: DateTime<Utc> = "2000-1-1T12:00:00+00:00".parse().unwrap();
+        Task::new(
+            1,
+            "test_task1".to_string(),
+            Some("desc".to_string()),
+            Some(deadline),
+            Priority::High,
+        )
+    }
+
+    #[test]
+    fn file_path() {
+        assert_eq!(
+            FilePath::new(Some("test1.json".to_string())).path(),
+            "test1.json"
+        );
+        let path_default = FilePath::new(None).path();
+        assert!(path_default.contains("task.json"));
+        assert!(path_default.contains("rstodo"));
+    }
+
+    #[test]
+    fn test_load_tasks() {
+        let file = temp_path("load");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+
+        assert_eq!(load_tasks(&path).unwrap(), Vec::new());
+
+        write_file(&file, "");
+        assert_eq!(load_tasks(&path).unwrap(), Vec::new());
+
+        write_file(
+            &file,
+            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+        );
+        let load = load_tasks(&path).unwrap();
+        assert_eq!(load, vec![set_test_task()]);
+
+        write_file(&file, "{Illegal data");
+        match load_tasks(&path) {
+            Err(AppError::Corrupted { path, source: _ }) => {
+                assert_eq!(path, file)
+            }
+            _ => unreachable!(),
+        }
+
+        let _ = fs::remove_file(&file);
+    }
+
+    #[test]
+    fn test_update() {
+        let file = temp_path("update");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+        for _ in 0..5 {
+            update_tasks(&path, |t| {
+                t.push(set_test_task());
+                Ok(())
+            })
+            .unwrap();
+        }
+        let load = load_tasks(&path).unwrap();
+        assert_eq!(load.len(), 5);
+        assert_eq!(load[2].id(), 1);
+        assert_eq!(load[3]._content(), "test_task1".to_string());
+
+        let _ = fs::remove_file(&file);
+    }
+
+    #[test]
+    fn test_update_err() {
+        let file = temp_path("update_err");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+
+        update_tasks(&path, |t| {
+            t.push(set_test_task());
+            Ok(())
+        })
+        .unwrap();
+
+        let before = fs::read_to_string(&file).unwrap();
+        let err = update_tasks(&path, |_| Err(AppError::NothingToChange)).unwrap_err();
+        match err {
+            AppError::NothingToChange => {}
+            _ => unreachable!(),
+        }
+        assert_eq!(fs::read_to_string(&file).unwrap(), before);
+        let _ = fs::remove_file(&file);
+    }
+}
