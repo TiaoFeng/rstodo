@@ -139,7 +139,8 @@ impl TaskRow<'_> {
 
 #[cfg(test)]
 mod task_test {
-    use crate::task::*;
+    use super::*;
+
     #[test]
     fn test_task() {
         let id: usize = 1001;

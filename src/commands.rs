@@ -175,13 +175,14 @@ pub fn change_task(
 
 #[cfg(test)]
 mod commands_test {
-    use crate::{commands::*, time::to_utc};
+    use super::*;
+    use crate::time::to_utc;
     use chrono::NaiveDateTime;
-    use std::fs;
+    use std::{fs, process};
 
     fn temp_path(name: &str) -> String {
         std::env::temp_dir()
-            .join(format!("rstodo_test_{}.json", name))
+            .join(format!("{}_rstodo_test_{}.json", process::id(), name))
             .to_string_lossy()
             .to_string()
     }
