@@ -10,5 +10,8 @@ fmt:
 test:
     cargo test --all-features
 
-check: fmt ppy test
+cover:
+    cargo llvm-cov
+
+check: fmt ppy test cover
     @echo "All checks passed"
