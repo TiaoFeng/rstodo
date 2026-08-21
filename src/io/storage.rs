@@ -117,7 +117,7 @@ mod tests {
     use crate::task::Priority;
 
     use super::*;
-    use std::{fs, process};
+    use std::{fs, os::unix::fs::PermissionsExt, process};
 
     fn temp_path(name: &str) -> String {
         std::env::temp_dir()
@@ -195,9 +195,25 @@ mod tests {
         }
         let load = load_tasks(&path).unwrap();
         assert_eq!(load.len(), 5);
-        assert_eq!(load[2].id(), 1);
-        assert_eq!(load[3]._content(), "test_task1".to_string());
 
+        for task in load.iter().take(5) {
+            assert_eq!(task.id(), 1);
+            assert_eq!(task._content(), "test_task1".to_string());
+            assert_eq!(task.description(), Some("desc".to_string()));
+            assert_eq!(
+                task.deadline(),
+                Some("2000-1-1T12:00:00+00:00".parse::<DateTime<Utc>>().unwrap())
+            );
+            assert_eq!(task.priority(), Priority::High);
+        }
+
+        update_tasks(&path, |t| {
+            t.clear();
+            Ok(())
+        })
+        .unwrap();
+        let load = load_tasks(&path).unwrap();
+        assert_eq!(load, Vec::new());
         let _ = fs::remove_file(&file);
     }
 
@@ -221,5 +237,93 @@ mod tests {
         }
         assert_eq!(fs::read_to_string(&file).unwrap(), before);
         let _ = fs::remove_file(&file);
+    }
+
+    #[test]
+    fn test_load_tasks_err() {
+        let file = temp_path("load_err_not_utf8");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+
+        fs::write(&file, [0xFF, 0xFF]).unwrap();
+        let err = load_tasks(&path).unwrap_err();
+        let _ = fs::remove_file(&file);
+        match err {
+            AppError::Io {
+                operation,
+                path: _,
+                source,
+            } => {
+                assert_eq!(operation, "read tasks");
+                assert!(!source.to_string().is_empty());
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_permission_denied() {
+        let file = temp_path("permission_denied");
+        let path = FilePath::new(Some(file.clone()));
+
+        fs::write(&file, "test_content").unwrap();
+        assert_eq!(
+            fs::read_to_string(&file).unwrap(),
+            "test_content".to_string()
+        );
+
+        let no_permission = 0o000;
+        let std_permission = 0o644;
+        fs::set_permissions(&file, fs::Permissions::from_mode(no_permission)).unwrap();
+        let err = load_tasks(&path).unwrap_err();
+        match err {
+            AppError::Io {
+                operation,
+                path: _,
+                source,
+            } => {
+                assert_eq!(operation, "create a read-only handle");
+                assert!(!source.to_string().is_empty());
+            }
+            _ => unreachable!(),
+        }
+        fs::set_permissions(&file, fs::Permissions::from_mode(std_permission)).unwrap();
+        let _ = fs::remove_file(&file);
+    }
+
+    #[test]
+    fn test_update_create_dir() {
+        let dir = temp_path("create_file");
+        let file = format!("{}/sub/subsub/task.json", dir);
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_dir_all(&dir);
+
+        update_tasks(&path, |t| {
+            t.push(set_test_task());
+            Ok(())
+        })
+        .unwrap();
+        let load = load_tasks(&path).unwrap();
+        let _ = fs::remove_file(&file);
+        assert_eq!(load.len(), 1);
+        assert_eq!(load[0]._content(), "test_task1".to_string());
+    }
+
+    #[test]
+    fn test_update_create_dir_err() {
+        let path = FilePath::new(Some("".to_string()));
+        let err = update_tasks(&path, |_| Ok(())).unwrap_err();
+        match err {
+            AppError::Io {
+                operation,
+                path: _,
+                source,
+            } => {
+                assert_eq!(operation, "create a read-write handle");
+                assert!(!source.to_string().is_empty());
+            }
+            _ => unreachable!(),
+        }
     }
 }
