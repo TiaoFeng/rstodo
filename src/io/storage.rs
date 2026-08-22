@@ -28,6 +28,11 @@ impl FilePath {
             }
         }
     }
+
+    pub fn backup_path(&self) -> String {
+        let main_path = self.path();
+        format!("{}.bak", main_path)
+    }
 }
 
 pub fn update_tasks(
@@ -44,20 +49,40 @@ pub fn update_tasks(
         .truncate(false)
         .open(path.path())
         .map_err(|err| io_err("create a read-write handle", path.path(), err))?;
+    let backup_file = File::options()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path.backup_path())
+        .map_err(|err| io_err("create a read-write handle", path.path(), err))?;
+
     file.lock()
-        .map_err(|err| io_err("lock", path.path(), err))?;
-    let mut tasks = load_from(&file, &path.path())?;
+        .map_err(|err| io_err("lock main file", path.path(), err))?;
+    backup_file
+        .lock()
+        .map_err(|err| io_err("lock backup file", path.backup_path(), err))?;
+    let mut tasks = load_tasks_write_read(&file, &backup_file, &path.path(), &path.backup_path())?;
     f(&mut tasks)?;
-    save_to(&file, &tasks, &path.path())?;
+    save_to(
+        &file,
+        &backup_file,
+        &tasks,
+        &path.path(),
+        &path.backup_path(),
+    )?;
     file.unlock()
-        .map_err(|err| io_err("unlock", path.path(), err))?;
+        .map_err(|err| io_err("unlock main file", path.path(), err))?;
+    backup_file
+        .unlock()
+        .map_err(|err| io_err("unlock backup file", path.path(), err))?;
     Ok(())
 }
 
 fn load_from(file: &File, path: &str) -> Result<Vec<Task>, AppError> {
     let mut f = file
         .try_clone()
-        .map_err(|err| io_err("clone file for reading", path.to_string(), err))?;
+        .map_err(|err| io_err("clone file", path.to_string(), err))?;
     f.seek(SeekFrom::Start(0))
         .map_err(|err| io_err("seek to the beginning", path.to_string(), err))?;
     let mut text = String::new();
@@ -73,10 +98,20 @@ fn load_from(file: &File, path: &str) -> Result<Vec<Task>, AppError> {
     })
 }
 
-fn save_to(file: &File, tasks: &[Task], path: &str) -> Result<(), AppError> {
+fn save_to(
+    file: &File,
+    backup_file: &File,
+    tasks: &[Task],
+    path: &str,
+    backup_path: &str,
+) -> Result<(), AppError> {
+    if let Err(err) = backup(file, backup_file, path, backup_path) {
+        eprintln!("Warning: backup failed: {}", err);
+    }
+
     let mut f = file
         .try_clone()
-        .map_err(|err| io_err("clone file for saving", path.to_string(), err))?;
+        .map_err(|err| io_err("clone main file", path.to_string(), err))?;
     let data =
         serde_json::to_string_pretty(tasks).map_err(|serde_json_err| AppError::Corrupted {
             path: path.to_string(),
@@ -85,15 +120,74 @@ fn save_to(file: &File, tasks: &[Task], path: &str) -> Result<(), AppError> {
     f.seek(SeekFrom::Start(0))
         .map_err(|err| io_err("seek to the beginning", path.to_string(), err))?;
     f.set_len(0)
-        .map_err(|err| io_err("reset text for saving", path.to_string(), err))?;
+        .map_err(|err| io_err("reset file for saving", path.to_string(), err))?;
     f.write_all(data.as_bytes())
-        .map_err(|err| io_err("write to file", path.to_string(), err))?;
+        .map_err(|err| io_err("write main file", path.to_string(), err))?;
     f.flush()
         .map_err(|err| io_err("flush", path.to_string(), err))?;
     Ok(())
 }
 
-pub fn load_tasks(path: &FilePath) -> Result<Vec<Task>, AppError> {
+fn load_tasks_write_read(
+    file: &File,
+    backup_file: &File,
+    path: &str,
+    backup_path: &str,
+) -> Result<Vec<Task>, AppError> {
+    match load_from(file, path) {
+        Ok(tasks) => Ok(tasks),
+        Err(AppError::Corrupted { path, source }) => {
+            eprintln!(
+                "Warning: file: {} corrupted: {}, trying backup...",
+                path, source
+            );
+            match load_from(backup_file, backup_path) {
+                Ok(backup_tasks) => {
+                    eprintln!(
+                        "Warning: recovered from backup file, but you may have lost your last action"
+                    );
+                    Ok(backup_tasks)
+                }
+                Err(err) => Err(err),
+            }
+        }
+        Err(err) => Err(err),
+    }
+}
+
+fn try_load_from_backup_read_only(path: &FilePath) -> Result<Vec<Task>, AppError> {
+    let backup_file = match File::options()
+        .read(true)
+        .write(false)
+        .create(false)
+        .truncate(false)
+        .open(path.backup_path())
+    {
+        Ok(f) => f,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => return Err(io_err("open backup file", path.backup_path(), err)),
+    };
+
+    backup_file
+        .lock_shared()
+        .map_err(|err| io_err("lock backup file", path.backup_path(), err))?;
+    let result = match load_from(&backup_file, &path.backup_path()) {
+        Ok(tasks) if tasks.is_empty() => Ok(Vec::new()),
+        Ok(tasks) => {
+            eprintln!(
+                "Warning: recovered from backup file, but you may have lost your last action"
+            );
+            Ok(tasks)
+        }
+        Err(err) => Err(err),
+    };
+    backup_file
+        .unlock()
+        .map_err(|err| io_err("unlock backup file", path.backup_path(), err))?;
+    result
+}
+
+pub fn load_tasks_read_only(path: &FilePath) -> Result<Vec<Task>, AppError> {
     let file = match File::options()
         .read(true)
         .write(false)
@@ -102,12 +196,68 @@ pub fn load_tasks(path: &FilePath) -> Result<Vec<Task>, AppError> {
         .open(path.path())
     {
         Ok(f) => f,
-        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => return Err(io_err("create a read-only handle", path.path(), err)),
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            return try_load_from_backup_read_only(path);
+        }
+        Err(err) => {
+            return Err(io_err("open main file", path.path(), err));
+        }
     };
     file.lock_shared()
-        .map_err(|err| io_err("try to get a shared lock", path.path(), err))?;
-    load_from(&file, &path.path())
+        .map_err(|err| io_err("shared lock main file", path.path(), err))?;
+
+    match load_from(&file, &path.path()) {
+        Ok(tasks) => Ok(tasks),
+        Err(AppError::Corrupted {
+            path: main_file_path,
+            source,
+        }) => {
+            eprintln!(
+                "Warning: file: {} corrupted: {}, trying backup...",
+                main_file_path, source
+            );
+            match try_load_from_backup_read_only(path) {
+                Ok(tasks) if tasks.is_empty() => Err(AppError::Corrupted {
+                    path: path.path(),
+                    source,
+                }),
+                Ok(tasks) => Ok(tasks),
+                Err(_) => Err(AppError::Corrupted {
+                    path: path.path(),
+                    source,
+                }),
+            }
+        }
+        Err(err) => Err(err),
+    }
+}
+
+fn backup(file: &File, backup_file: &File, path: &str, backup_path: &str) -> Result<(), AppError> {
+    let mut f = file
+        .try_clone()
+        .map_err(|err| io_err("clone main file", path.to_string(), err))?;
+    f.seek(SeekFrom::Start(0))
+        .map_err(|err| io_err("seek to the beginning", path.to_string(), err))?;
+    let mut content = Vec::new();
+    f.read_to_end(&mut content)
+        .map_err(|err| io_err("read main file", path.to_string(), err))?;
+
+    let mut backf = backup_file
+        .try_clone()
+        .map_err(|err| io_err("clone backup file", backup_path.to_string(), err))?;
+    backf
+        .seek(SeekFrom::Start(0))
+        .map_err(|err| io_err("seek to the beginning", backup_path.to_string(), err))?;
+    backf
+        .set_len(0)
+        .map_err(|err| io_err("reset file for backup", backup_path.to_string(), err))?;
+    backf
+        .write_all(&content)
+        .map_err(|err| io_err("write backup file", backup_path.to_string(), err))?;
+    backf
+        .flush()
+        .map_err(|err| io_err("flush", backup_path.to_string(), err))?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -158,20 +308,20 @@ mod tests {
         let path = FilePath::new(Some(file.clone()));
         let _ = fs::remove_file(&file);
 
-        assert_eq!(load_tasks(&path).unwrap(), Vec::new());
+        assert_eq!(load_tasks_read_only(&path).unwrap(), Vec::new());
 
         write_file(&file, "");
-        assert_eq!(load_tasks(&path).unwrap(), Vec::new());
+        assert_eq!(load_tasks_read_only(&path).unwrap(), Vec::new());
 
         write_file(
             &file,
             &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
         );
-        let load = load_tasks(&path).unwrap();
+        let load = load_tasks_read_only(&path).unwrap();
         assert_eq!(load, vec![set_test_task()]);
 
         write_file(&file, "{Illegal data");
-        match load_tasks(&path) {
+        match load_tasks_read_only(&path) {
             Err(AppError::Corrupted { path, source: _ }) => {
                 assert_eq!(path, file)
             }
@@ -193,7 +343,7 @@ mod tests {
             })
             .unwrap();
         }
-        let load = load_tasks(&path).unwrap();
+        let load = load_tasks_read_only(&path).unwrap();
         assert_eq!(load.len(), 5);
 
         for task in load.iter().take(5) {
@@ -212,7 +362,7 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        let load = load_tasks(&path).unwrap();
+        let load = load_tasks_read_only(&path).unwrap();
         assert_eq!(load, Vec::new());
         let _ = fs::remove_file(&file);
     }
@@ -246,7 +396,7 @@ mod tests {
         let _ = fs::remove_file(&file);
 
         fs::write(&file, [0xFF, 0xFF]).unwrap();
-        let err = load_tasks(&path).unwrap_err();
+        let err = load_tasks_read_only(&path).unwrap_err();
         let _ = fs::remove_file(&file);
         match err {
             AppError::Io {
@@ -276,14 +426,14 @@ mod tests {
         let no_permission = 0o000;
         let std_permission = 0o644;
         fs::set_permissions(&file, fs::Permissions::from_mode(no_permission)).unwrap();
-        let err = load_tasks(&path).unwrap_err();
+        let err = load_tasks_read_only(&path).unwrap_err();
         match err {
             AppError::Io {
                 operation,
                 path: _,
                 source,
             } => {
-                assert_eq!(operation, "create a read-only handle");
+                assert_eq!(operation, "open main file");
                 assert!(!source.to_string().is_empty());
             }
             _ => unreachable!(),
@@ -304,7 +454,7 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        let load = load_tasks(&path).unwrap();
+        let load = load_tasks_read_only(&path).unwrap();
         let _ = fs::remove_file(&file);
         assert_eq!(load.len(), 1);
         assert_eq!(load[0]._content(), "test_task1".to_string());

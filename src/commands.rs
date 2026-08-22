@@ -6,7 +6,7 @@ use crate::error::AppError;
 use crate::io::cli_print::show_table;
 use crate::io::{
     cli_print::list_table,
-    storage::{FilePath, load_tasks, update_tasks},
+    storage::{FilePath, load_tasks_read_only, update_tasks},
 };
 use crate::task::{Priority, Task};
 use crate::time::parse_deadline_input;
@@ -46,7 +46,7 @@ pub fn add_task(
 
 pub fn list_task(path: &FilePath, sort: Option<SortBy>) -> Result<(), AppError> {
     if sort.is_none() {
-        let tasks = load_tasks(path)?;
+        let tasks = load_tasks_read_only(path)?;
         if tasks.is_empty() {
             println!("No tasks");
             Ok(())
@@ -82,7 +82,7 @@ pub fn list_task(path: &FilePath, sort: Option<SortBy>) -> Result<(), AppError> 
 }
 
 pub fn show_details(no: usize, path: &FilePath) -> Result<(), AppError> {
-    let tasks = load_tasks(path)?;
+    let tasks = load_tasks_read_only(path)?;
     if tasks.is_empty() {
         println!("No tasks");
         return Ok(());
@@ -222,7 +222,7 @@ mod commands_test {
         )
         .unwrap();
 
-        let tasks = load_tasks(&path).unwrap();
+        let tasks = load_tasks_read_only(&path).unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id(), 1);
         assert_eq!(tasks[0]._content(), "test_add1");
@@ -240,7 +240,7 @@ mod commands_test {
         assert_eq!(tasks[0].deadline(), Some(expected));
         // 测试2：默认项测试
         add_task("test_add2".to_string(), &path, None, None, None).unwrap();
-        let tasks = load_tasks(&path).unwrap();
+        let tasks = load_tasks_read_only(&path).unwrap();
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[1].id(), 2);
         assert_eq!(tasks[1]._content(), "test_add2".to_string());
@@ -257,7 +257,7 @@ mod commands_test {
             None,
         )
         .unwrap();
-        let tasks = load_tasks(&path).unwrap();
+        let tasks = load_tasks_read_only(&path).unwrap();
         assert_eq!(tasks.len(), 3);
         assert_eq!(tasks[2].id(), 3);
         assert_eq!(tasks[2]._content(), "test_add3".to_string());
@@ -281,7 +281,7 @@ mod commands_test {
             )
             .is_err()
         );
-        assert_eq!(load_tasks(&path).unwrap().len(), 3);
+        assert_eq!(load_tasks_read_only(&path).unwrap().len(), 3);
         let _ = fs::remove_file(&file);
     }
 
@@ -315,14 +315,14 @@ mod commands_test {
 
         set_test_task(&path);
         delete_task(2, &path).unwrap();
-        let tasks = load_tasks(&path).unwrap();
+        let tasks = load_tasks_read_only(&path).unwrap();
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0]._content(), "task1".to_string());
         assert_eq!(tasks[1]._content(), "task3".to_string());
 
         assert!(delete_task(0, &path).is_err());
         assert!(delete_task(99, &path).is_err());
-        assert_eq!(load_tasks(&path).unwrap().len(), 2);
+        assert_eq!(load_tasks_read_only(&path).unwrap().len(), 2);
         let _ = fs::remove_file(&file);
     }
 
@@ -346,17 +346,21 @@ mod commands_test {
             None,
         )
         .unwrap();
-        let tasks = load_tasks(&path).unwrap();
+        let tasks = load_tasks_read_only(&path).unwrap();
         assert_eq!(tasks[0]._content(), "change_task2".to_string());
         assert_eq!(tasks[0].description(), Some("new_desc2".to_string()));
 
         // 测试2：清空desc
         change_task(1, &path, None, Some(None), None, None).unwrap();
-        assert!(load_tasks(&path).unwrap()[0].description().is_none());
+        assert!(
+            load_tasks_read_only(&path).unwrap()[0]
+                .description()
+                .is_none()
+        );
 
         // 测试3：清空deadline
         change_task(1, &path, None, None, Some(None), None).unwrap();
-        assert!(load_tasks(&path).unwrap()[0].deadline().is_none());
+        assert!(load_tasks_read_only(&path).unwrap()[0].deadline().is_none());
 
         // 测试4：设置deadline
         change_task(
@@ -372,18 +376,27 @@ mod commands_test {
             &NaiveDateTime::parse_from_str("2000-02-01T23:59:59", "%Y-%m-%dT%H:%M:%S").unwrap(),
         )
         .unwrap();
-        assert_eq!(load_tasks(&path).unwrap()[0].deadline(), Some(expected));
+        assert_eq!(
+            load_tasks_read_only(&path).unwrap()[0].deadline(),
+            Some(expected)
+        );
 
         // 测试5：清空priority
         change_task(3, &path, None, None, None, Some(None)).unwrap();
-        assert_eq!(load_tasks(&path).unwrap()[2].priority(), Priority::Low);
+        assert_eq!(
+            load_tasks_read_only(&path).unwrap()[2].priority(),
+            Priority::Low
+        );
 
         // 测试6：添加priority
         change_task(3, &path, None, None, None, Some(Some(Priority::Medium))).unwrap();
-        assert_eq!(load_tasks(&path).unwrap()[2].priority(), Priority::Medium);
+        assert_eq!(
+            load_tasks_read_only(&path).unwrap()[2].priority(),
+            Priority::Medium
+        );
 
         // 测试7：非法数据
-        let tasks = load_tasks(&path).unwrap();
+        let tasks = load_tasks_read_only(&path).unwrap();
         assert!(
             change_task(
                 1,
@@ -395,7 +408,7 @@ mod commands_test {
             )
             .is_err()
         );
-        assert_eq!(load_tasks(&path).unwrap(), tasks);
+        assert_eq!(load_tasks_read_only(&path).unwrap(), tasks);
         let _ = fs::remove_file(&file);
     }
 
@@ -407,7 +420,7 @@ mod commands_test {
         set_test_task(&path);
 
         list_task(&path, Some(SortBy::Deadline)).unwrap();
-        let tasks = load_tasks(&path).unwrap();
+        let tasks = load_tasks_read_only(&path).unwrap();
         let expected = to_utc(
             &NaiveDateTime::parse_from_str("2000-01-01T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap(),
         )
@@ -416,7 +429,7 @@ mod commands_test {
         assert!(tasks[2].deadline().is_none());
 
         list_task(&path, Some(SortBy::Priority)).unwrap();
-        let tasks = load_tasks(&path).unwrap();
+        let tasks = load_tasks_read_only(&path).unwrap();
         assert_eq!(tasks[0].priority(), Priority::High);
         assert_eq!(tasks[1].priority(), Priority::Medium);
         assert_eq!(tasks[2].priority(), Priority::Low);
@@ -434,9 +447,9 @@ mod commands_test {
         assert!(complete_task(99, &path).is_err());
 
         complete_task(1, &path).unwrap();
-        assert!(load_tasks(&path).unwrap()[0]._completed());
+        assert!(load_tasks_read_only(&path).unwrap()[0]._completed());
         incomplete_task(1, &path).unwrap();
-        assert!(!load_tasks(&path).unwrap()[0]._completed());
+        assert!(!load_tasks_read_only(&path).unwrap()[0]._completed());
         let _ = fs::remove_file(&file);
     }
 }
