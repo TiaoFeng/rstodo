@@ -6,7 +6,7 @@ use crate::error::AppError;
 use crate::io::cli_print::show_table;
 use crate::io::{
     cli_print::list_table,
-    storage::{FilePath, load_tasks_read_only, update_tasks},
+    storage::{TaskStore, load_tasks_read_only, update_tasks},
 };
 use crate::task::{Priority, Task};
 use crate::time::parse_deadline_input;
@@ -21,7 +21,7 @@ pub enum SortBy {
 
 pub fn add_task(
     content: String,
-    path: &FilePath,
+    path: &TaskStore,
     description: Option<String>,
     deadline: Option<String>,
     priority: Option<Priority>,
@@ -44,7 +44,7 @@ pub fn add_task(
     })
 }
 
-pub fn list_task(path: &FilePath, sort: Option<SortBy>) -> Result<(), AppError> {
+pub fn list_task(path: &TaskStore, sort: Option<SortBy>) -> Result<(), AppError> {
     if sort.is_none() {
         let tasks = load_tasks_read_only(path)?;
         if tasks.is_empty() {
@@ -81,7 +81,7 @@ pub fn list_task(path: &FilePath, sort: Option<SortBy>) -> Result<(), AppError> 
     }
 }
 
-pub fn show_details(no: usize, path: &FilePath) -> Result<(), AppError> {
+pub fn show_details(no: usize, path: &TaskStore) -> Result<(), AppError> {
     let tasks = load_tasks_read_only(path)?;
     if tasks.is_empty() {
         println!("No tasks");
@@ -104,7 +104,7 @@ pub fn show_details(no: usize, path: &FilePath) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn complete_task(no: usize, path: &FilePath) -> Result<(), AppError> {
+pub fn complete_task(no: usize, path: &TaskStore) -> Result<(), AppError> {
     update_tasks(path, |tasks| {
         let idx = no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?;
         let task = tasks.get_mut(idx).ok_or(AppError::TaskNotFound { no })?;
@@ -113,7 +113,7 @@ pub fn complete_task(no: usize, path: &FilePath) -> Result<(), AppError> {
     })
 }
 
-pub fn incomplete_task(no: usize, path: &FilePath) -> Result<(), AppError> {
+pub fn incomplete_task(no: usize, path: &TaskStore) -> Result<(), AppError> {
     update_tasks(path, |tasks| {
         let idx = no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?;
         let task = tasks.get_mut(idx).ok_or(AppError::TaskNotFound { no })?;
@@ -122,7 +122,7 @@ pub fn incomplete_task(no: usize, path: &FilePath) -> Result<(), AppError> {
     })
 }
 
-pub fn delete_task(no: usize, path: &FilePath) -> Result<(), AppError> {
+pub fn delete_task(no: usize, path: &TaskStore) -> Result<(), AppError> {
     update_tasks(path, |tasks| {
         let idx = no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?;
         if idx >= tasks.len() {
@@ -135,7 +135,7 @@ pub fn delete_task(no: usize, path: &FilePath) -> Result<(), AppError> {
 
 pub fn change_task(
     no: usize,
-    path: &FilePath,
+    path: &TaskStore,
     content: Option<String>,
     description: Option<Option<String>>,
     deadline: Option<Option<String>>,
@@ -187,7 +187,7 @@ mod commands_test {
             .to_string()
     }
 
-    fn set_test_task(path: &FilePath) {
+    fn set_test_task(path: &TaskStore) {
         add_task(
             "task1".into(),
             path,
@@ -210,8 +210,8 @@ mod commands_test {
     #[test]
     fn test_add() {
         let file = temp_path("add");
-        let path = FilePath::new(Some(file.clone()));
-        let _ = fs::remove_file(&file);
+        let path = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
 
         // 测试1：全子项写入
@@ -284,15 +284,15 @@ mod commands_test {
             .is_err()
         );
         assert_eq!(load_tasks_read_only(&path).unwrap().len(), 3);
-        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }
 
     #[test]
     fn test_list_show() {
         let file = temp_path("list_show");
-        let path = FilePath::new(Some(file.clone()));
-        let _ = fs::remove_file(&file);
+        let path = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
 
         assert!(list_task(&path, None).is_ok());
@@ -306,15 +306,15 @@ mod commands_test {
 
         assert!(show_details(0, &path).is_err());
         assert!(show_details(99, &path).is_err());
-        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }
 
     #[test]
     fn test_delete() {
         let file = temp_path("delete");
-        let path = FilePath::new(Some(file.clone()));
-        let _ = fs::remove_file(&file);
+        let path = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
 
         assert!(delete_task(1, &path).is_err());
@@ -329,15 +329,15 @@ mod commands_test {
         assert!(delete_task(0, &path).is_err());
         assert!(delete_task(99, &path).is_err());
         assert_eq!(load_tasks_read_only(&path).unwrap().len(), 2);
-        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }
 
     #[test]
     fn test_change() {
         let file = temp_path("change");
-        let path = FilePath::new(Some(file.clone()));
-        let _ = fs::remove_file(&file);
+        let path = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
 
         assert!(change_task(1, &path, None, None, None, None).is_err());
@@ -417,15 +417,15 @@ mod commands_test {
             .is_err()
         );
         assert_eq!(load_tasks_read_only(&path).unwrap(), tasks);
-        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }
 
     #[test]
     fn test_sort() {
         let file = temp_path("sort");
-        let path = FilePath::new(Some(file.clone()));
-        let _ = fs::remove_file(&file);
+        let path = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
 
         set_test_task(&path);
@@ -444,15 +444,15 @@ mod commands_test {
         assert_eq!(tasks[0].priority(), Priority::High);
         assert_eq!(tasks[1].priority(), Priority::Medium);
         assert_eq!(tasks[2].priority(), Priority::Low);
-        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }
 
     #[test]
     fn test_done_undone() {
         let file = temp_path("done_undone");
-        let path = FilePath::new(Some(file.clone()));
-        let _ = fs::remove_file(&file);
+        let path = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
 
         set_test_task(&path);
@@ -464,7 +464,7 @@ mod commands_test {
         assert!(load_tasks_read_only(&path).unwrap()[0]._completed());
         incomplete_task(1, &path).unwrap();
         assert!(!load_tasks_read_only(&path).unwrap()[0]._completed());
-        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }
 }

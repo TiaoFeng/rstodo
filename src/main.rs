@@ -5,7 +5,7 @@ mod task;
 mod time;
 
 use clap::{Parser, Subcommand};
-use io::storage::FilePath;
+use io::storage::TaskStore;
 use std::error::Error;
 
 use crate::commands::SortBy;
@@ -60,26 +60,26 @@ enum Commands {
 
 fn main() {
     let cli = Cli::parse();
-    let path = FilePath::new(cli.file);
+    let store = TaskStore::new(cli.file);
     let result = match cli.command {
         Commands::Add {
             content,
             description,
             deadline,
             priority,
-        } => commands::add_task(content, &path, description, deadline, priority),
+        } => commands::add_task(content, &store, description, deadline, priority),
         Commands::Change {
             no,
             content,
             description,
             deadline,
             priority,
-        } => commands::change_task(no, &path, content, description, deadline, priority),
-        Commands::List { sort } => commands::list_task(&path, sort),
-        Commands::Show { no } => commands::show_details(no, &path),
-        Commands::Done { no } => commands::complete_task(no, &path),
-        Commands::Undone { no } => commands::incomplete_task(no, &path),
-        Commands::Delete { no } => commands::delete_task(no, &path),
+        } => commands::change_task(no, &store, content, description, deadline, priority),
+        Commands::List { sort } => commands::list_task(&store, sort),
+        Commands::Show { no } => commands::show_details(no, &store),
+        Commands::Done { no } => commands::complete_task(no, &store),
+        Commands::Undone { no } => commands::incomplete_task(no, &store),
+        Commands::Delete { no } => commands::delete_task(no, &store),
     };
     if let Err(apperr) = result {
         eprintln!("Error: {}", apperr);

@@ -1,4 +1,4 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, path::Path};
 
 #[derive(Debug)]
 pub enum AppError {
@@ -21,10 +21,10 @@ pub enum AppError {
     },
 }
 
-pub fn io_err(operation: &'static str, path: String, err: std::io::Error) -> AppError {
+pub fn io_err(operation: &'static str, path: &Path, err: std::io::Error) -> AppError {
     AppError::Io {
         operation,
-        path,
+        path: path.to_string_lossy().to_string(),
         source: err,
     }
 }
@@ -178,7 +178,7 @@ mod error_test {
     #[test]
     fn pub_trait() {
         let err = create_io_error();
-        let io_err = io_err("test_op", "test1.json".to_string(), err);
+        let io_err = io_err("test_op", Path::new("test1.json"), err);
         match io_err {
             AppError::Io {
                 operation,
