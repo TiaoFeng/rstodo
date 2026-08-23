@@ -86,6 +86,50 @@ pub fn update_tasks(
     Ok(())
 }
 
+pub fn load_tasks_read_only(path: &FilePath) -> Result<Vec<Task>, AppError> {
+    let file = match File::options()
+        .read(true)
+        .write(false)
+        .create(false)
+        .truncate(false)
+        .open(path.path())
+    {
+        Ok(f) => f,
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            return try_load_from_backup_read_only(path);
+        }
+        Err(err) => {
+            return Err(io_err("open main file", path.path(), err));
+        }
+    };
+    file.lock_shared()
+        .map_err(|err| io_err("shared lock main file", path.path(), err))?;
+
+    match load_from(&file, &path.path()) {
+        Ok(Some(tasks)) => Ok(tasks),
+        Ok(None) => try_load_from_backup_read_only(path),
+        Err(AppError::Corrupted { path: _, source }) => {
+            eprintln!(
+                "Warning: file: {} corrupted: {}, trying backup...",
+                path.path(),
+                source
+            );
+            match try_load_from_backup_read_only(path) {
+                Ok(tasks) if tasks.is_empty() => Err(AppError::Corrupted {
+                    path: path.path(),
+                    source,
+                }),
+                Ok(tasks) => Ok(tasks),
+                Err(_) => Err(AppError::Corrupted {
+                    path: path.path(),
+                    source,
+                }),
+            }
+        }
+        Err(err) => Err(err),
+    }
+}
+
 fn load_from(file: &File, path: &str) -> Result<Option<Vec<Task>>, AppError> {
     let mut f = file
         .try_clone()
@@ -151,9 +195,7 @@ fn load_tasks_write_read(
         Ok(Some(tasks)) => Ok((tasks, LoadState::Normal)),
         Ok(None) => match load_from(backup_file, backup_path)? {
             Some(tasks) => {
-                eprintln!(
-                    "Warning: recovered from backup file, but you may have lost your last action"
-                );
+                warn_recovered_from_backup(backup_path);
                 Ok((tasks, LoadState::Recovered))
             }
             None => Ok((Vec::new(), LoadState::Normal)),
@@ -165,9 +207,7 @@ fn load_tasks_write_read(
             );
             match load_from(backup_file, backup_path)? {
                 Some(tasks) => {
-                    eprintln!(
-                        "Warning: recovered from backup file, but you may have lost your last action"
-                    );
+                    warn_recovered_from_backup(backup_path);
                     Ok((tasks, LoadState::Recovered))
                 }
                 None => Err(AppError::Corrupted { path, source }),
@@ -196,9 +236,7 @@ fn try_load_from_backup_read_only(path: &FilePath) -> Result<Vec<Task>, AppError
     let result = match load_from(&backup_file, &path.backup_path()) {
         Ok(None) => Ok(Vec::new()),
         Ok(Some(tasks)) => {
-            eprintln!(
-                "Warning: recovered from backup file, but you may have lost your last action"
-            );
+            warn_recovered_from_backup(&path.backup_path());
             Ok(tasks)
         }
         Err(err) => Err(err),
@@ -207,50 +245,6 @@ fn try_load_from_backup_read_only(path: &FilePath) -> Result<Vec<Task>, AppError
         .unlock()
         .map_err(|err| io_err("unlock backup file", path.backup_path(), err))?;
     result
-}
-
-pub fn load_tasks_read_only(path: &FilePath) -> Result<Vec<Task>, AppError> {
-    let file = match File::options()
-        .read(true)
-        .write(false)
-        .create(false)
-        .truncate(false)
-        .open(path.path())
-    {
-        Ok(f) => f,
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-            return try_load_from_backup_read_only(path);
-        }
-        Err(err) => {
-            return Err(io_err("open main file", path.path(), err));
-        }
-    };
-    file.lock_shared()
-        .map_err(|err| io_err("shared lock main file", path.path(), err))?;
-
-    match load_from(&file, &path.path()) {
-        Ok(Some(tasks)) => Ok(tasks),
-        Ok(None) => try_load_from_backup_read_only(path),
-        Err(AppError::Corrupted { path: _, source }) => {
-            eprintln!(
-                "Warning: file: {} corrupted: {}, trying backup...",
-                path.path(),
-                source
-            );
-            match try_load_from_backup_read_only(path) {
-                Ok(tasks) if tasks.is_empty() => Err(AppError::Corrupted {
-                    path: path.path(),
-                    source,
-                }),
-                Ok(tasks) => Ok(tasks),
-                Err(_) => Err(AppError::Corrupted {
-                    path: path.path(),
-                    source,
-                }),
-            }
-        }
-        Err(err) => Err(err),
-    }
 }
 
 fn backup(file: &File, backup_file: &File, path: &str, backup_path: &str) -> Result<(), AppError> {
@@ -279,6 +273,15 @@ fn backup(file: &File, backup_file: &File, path: &str, backup_path: &str) -> Res
         .flush()
         .map_err(|err| io_err("flush", backup_path.to_string(), err))?;
     Ok(())
+}
+
+fn warn_recovered_from_backup(backup_path: &str) {
+    eprintln!(
+        "Warning: main task file is missing or corrupted,\
+        loaded data from backup file '{}'.\
+        Changes since the last successful save may be lost.",
+        backup_path
+    )
 }
 
 #[cfg(test)]
@@ -481,7 +484,6 @@ mod tests {
         let file = format!("{}/sub/subsub/task.json", dir);
         let path = FilePath::new(Some(file.clone()));
         let _ = fs::remove_dir_all(&dir);
-        let _ = fs::remove_file(path.backup_path());
 
         update_tasks(&path, |t| {
             t.push(set_test_task());
@@ -489,8 +491,7 @@ mod tests {
         })
         .unwrap();
         let load = load_tasks_read_only(&path).unwrap();
-        let _ = fs::remove_file(&file);
-        let _ = fs::remove_file(path.backup_path());
+        let _ = fs::remove_dir_all(&dir);
         assert_eq!(load.len(), 1);
         assert_eq!(load[0]._content(), "test_task1".to_string());
     }
@@ -510,5 +511,135 @@ mod tests {
             }
             _ => unreachable!(),
         }
+    }
+
+    #[test] // 主文件损坏，备份为空
+    fn test_backup1_fn_readonly() {
+        let file = temp_path("test_backup1");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+
+        write_file(&file, "{Illegal data");
+        write_file(&path.backup_path(), "");
+        match load_tasks_read_only(&path) {
+            Err(AppError::Corrupted { path, source }) => {
+                assert_eq!(path, file);
+                assert!(!source.to_string().is_empty());
+            }
+            _ => unreachable!(),
+        }
+        assert_eq!(fs::read_to_string(&file).unwrap(), "{Illegal data");
+
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+    }
+
+    #[test] // 主文件损坏，备份完好，从备份恢复
+    fn test_backup2_fn_readonly() {
+        let file = temp_path("test_backup2");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+
+        write_file(&file, "{Illegal data");
+        write_file(
+            &path.backup_path(),
+            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+        );
+        let load = load_tasks_read_only(&path).unwrap();
+        assert_eq!(load, vec![set_test_task()]);
+        let backup: Vec<Task> =
+            serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
+        assert_eq!(backup, load);
+        assert_eq!(backup, vec![set_test_task()]);
+
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+    }
+
+    #[test] // 主文件损坏，备份为空
+    fn test_backup3_fn_readwrite() {
+        let file = temp_path("test_backup3");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+
+        write_file(&file, "{Illegal data");
+        write_file(&path.backup_path(), "");
+
+        match update_tasks(&path, |t| {
+            t.push(set_test_task());
+            Ok(())
+        }) {
+            Err(AppError::Corrupted { path, source }) => {
+                assert_eq!(path, file);
+                assert!(!source.to_string().is_empty());
+            }
+            _ => unreachable!(),
+        }
+        assert_eq!(fs::read_to_string(&file).unwrap(), "{Illegal data");
+
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+    }
+
+    #[test] // 主文件损坏，备份完好，从备份恢复
+    fn test_backup4_fn_readwrite() {
+        let file = temp_path("test_backup4");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+
+        write_file(&file, "{Illegal data");
+        write_file(
+            &path.backup_path(),
+            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+        );
+
+        update_tasks(&path, |t| {
+            t.push(set_test_task());
+            Ok(())
+        })
+        .unwrap();
+        let load = load_tasks_read_only(&path).unwrap();
+        assert_eq!(load.len(), 2);
+        assert_eq!(load[0]._content(), "test_task1".to_string());
+        assert_eq!(load[1]._content(), "test_task1".to_string());
+        let backup: Vec<Task> =
+            serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
+        assert_eq!(backup, vec![set_test_task()]);
+
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+    }
+
+    #[test] // 主文件确实，备份完好，从备份恢复
+    fn test_backup5_fn_readwrite() {
+        let file = temp_path("test_backup5");
+        let path = FilePath::new(Some(file.clone()));
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+
+        write_file(
+            &path.backup_path(),
+            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+        );
+
+        update_tasks(&path, |t| {
+            t.push(set_test_task());
+            Ok(())
+        })
+        .unwrap();
+        let load = load_tasks_read_only(&path).unwrap();
+        assert_eq!(load.len(), 2);
+        assert_eq!(load[0]._content(), "test_task1".to_string());
+        assert_eq!(load[1]._content(), "test_task1".to_string());
+        let backup: Vec<Task> =
+            serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
+        assert_eq!(backup, vec![set_test_task()]);
+
+        let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
     }
 }
