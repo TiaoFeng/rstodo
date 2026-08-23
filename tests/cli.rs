@@ -1,6 +1,6 @@
 use std::{
     fs,
-    process::{Command, Output},
+    process::{self, Command, Output},
 };
 
 fn run(args: &[&str], file: &str) -> Output {
@@ -14,7 +14,7 @@ fn run(args: &[&str], file: &str) -> Output {
 
 fn temp_path(name: &str) -> String {
     std::env::temp_dir()
-        .join(format!("rstodo_tests_cli_{}", name))
+        .join(format!("{}_rstodo_tests_cli_{}.json", process::id(), name))
         .to_string_lossy()
         .to_string()
 }
@@ -31,6 +31,7 @@ fn err_tostring(out: &Output) -> String {
 fn test_add_list_data() {
     let file = temp_path("add_list");
     let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
 
     let out = run(
         &[
@@ -64,12 +65,16 @@ fn test_add_list_data() {
 
     let _ = fs::remove_file(&file);
     let _ = fs::remove_file(&empty_file);
+    let _ = fs::remove_file(format!("{}.bak", file));
+    let _ = fs::remove_file(format!("{}.bak", empty_file));
 }
 
 #[test]
 fn test_sort() {
     let file = temp_path("sort");
     let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
+
     assert!(
         run(&["add", "cli_test1", "-D", "cli_desc1", "-p", "low"], &file)
             .stderr
@@ -107,12 +112,14 @@ fn test_sort() {
         .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
     assert!(high < mid && mid < low1 && mid < low2);
     let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
 }
 
 #[test]
 fn change_task() {
     let file = temp_path("change");
     let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
 
     assert!(run(&["add", "cli_test1"], &file).stderr.is_empty());
     assert!(run(&["add", "cli_test2"], &file).stderr.is_empty());
@@ -139,12 +146,14 @@ fn change_task() {
     assert!(out_string.contains("cli_test1_change"));
 
     let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
 }
 
 #[test]
 fn test_error() {
     let file = temp_path("error");
     let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
 
     let out = run(&["change", "99", "-c", "error_change"], &file);
     assert_eq!(out.status.code(), Some(1));
@@ -168,4 +177,5 @@ fn test_error() {
     assert!(err.contains("{%Y-%m-%dT%H:%M:%S}"));
     assert!(fs::read_to_string(&file).unwrap().is_empty());
     let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
 }
