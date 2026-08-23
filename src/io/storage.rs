@@ -44,11 +44,7 @@ impl TaskStore {
     pub fn load(&self) -> Result<Vec<Task>, AppError> {
         let file = match open_read(self.main_path()) {
             Ok(file) => file,
-            Err(AppError::Io {
-                operation: _,
-                path: _,
-                source,
-            }) if source.kind() == ErrorKind::NotFound => {
+            Err(err) if is_not_found(&err) => {
                 return load_backup_fallback(self.backup_path());
             }
             Err(e) => return Err(e),
@@ -95,10 +91,22 @@ impl TaskStore {
         )?;
         Ok(())
     }
+
+    pub fn load_backup(&self) -> Result<Vec<Task>, AppError> {
+        load_backup_strict(self.backup_path())
+    }
+
+    pub fn restore_backup(&self) -> Result<(), AppError> {
+        create_dir(self.main_path())?;
+        let main = open_read_write(self.main_path())?;
+        let backup = open_read_write(self.backup_path())?;
+        lock_private(&main, self.main_path())?;
+        lock_private(&backup, self.backup_path())?;
+        restore_main_from_backup(&main, self.main_path(), &backup, self.backup_path())
+    }
 }
 
 // tier1
-
 fn parse_tasks(text: &str, path: &Path) -> Result<Option<Vec<Task>>, AppError> {
     if text.trim().is_empty() {
         return Ok(None);
@@ -120,6 +128,17 @@ fn serialize_tasks(tasks: &[Task], path: &Path) -> Result<String, AppError> {
 }
 
 // tier2
+fn is_not_found(err: &AppError) -> bool {
+    matches!(
+        err,
+        AppError::Io {
+            operation: _,
+            path: _,
+            source
+        } if source.kind() == ErrorKind::NotFound
+    )
+}
+
 fn create_dir(path: &Path) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|err| io_err("create dir", path, err))?;
@@ -160,6 +179,7 @@ fn lock_share(file: &File, path: &Path) -> Result<(), AppError> {
         .map_err(|err| io_err("lock shared", path, err))?;
     Ok(())
 }
+
 fn read_string(file: &File, path: &Path) -> Result<String, AppError> {
     let mut f = file
         .try_clone()
@@ -250,16 +270,10 @@ fn load_for_update(
 fn load_backup_fallback(backup_path: &Path) -> Result<Vec<Task>, AppError> {
     let backup_file = match open_read(backup_path) {
         Ok(file) => file,
-        Err(AppError::Io {
-            operation: _,
-            path: _,
-            source,
-        }) if source.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) if is_not_found(&err) => return Ok(Vec::new()),
         Err(err) => return Err(err),
     };
-    backup_file
-        .lock_shared()
-        .map_err(|err| io_err("lock shared", backup_path, err))?;
+    lock_share(&backup_file, backup_path)?;
     match read_task_from(&backup_file, backup_path) {
         Ok(Some(tasks)) => {
             warn_recovered_from_backup(backup_path);
@@ -268,6 +282,32 @@ fn load_backup_fallback(backup_path: &Path) -> Result<Vec<Task>, AppError> {
         Ok(None) => Ok(Vec::new()),
         Err(err) => Err(err),
     }
+}
+
+fn load_backup_strict(backup_path: &Path) -> Result<Vec<Task>, AppError> {
+    let backup_file = match open_read(backup_path) {
+        Ok(file) => file,
+        Err(err) if is_not_found(&err) => return Err(AppError::NothingToUndo),
+        Err(e) => return Err(e),
+    };
+    lock_share(&backup_file, backup_path)?;
+    match read_task_from(&backup_file, backup_path)? {
+        Some(tasks) if !tasks.is_empty() => Ok(tasks),
+        _ => Err(AppError::NothingToUndo),
+    }
+}
+
+fn restore_main_from_backup(
+    main: &File,
+    main_path: &Path,
+    backup: &File,
+    backup_path: &Path,
+) -> Result<(), AppError> {
+    if read_task_from(backup, backup_path)?.is_none() {
+        return Err(AppError::NothingToUndo);
+    }
+    let data = read_bytes(backup, backup_path)?;
+    overwrite(main, &data, main_path)
 }
 
 #[cfg(test)]
@@ -635,6 +675,118 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
         assert_eq!(backup, vec![set_test_task()]);
 
+        let _ = fs::remove_file(path.main_path());
+        let _ = fs::remove_file(path.backup_path());
+    }
+
+    #[test]
+    fn test_load_backup() {
+        let file = temp_path("test_load_backup");
+        let path = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(path.main_path());
+        let _ = fs::remove_file(path.backup_path());
+
+        let err = path.load_backup().unwrap_err();
+        assert!(matches!(err, AppError::NothingToUndo));
+
+        let _ = fs::remove_file(path.main_path());
+        let _ = fs::remove_file(path.backup_path());
+
+        write_file(
+            path.backup_path(),
+            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+        );
+
+        let tasks = path.load_backup().unwrap();
+        assert_eq!(tasks, vec![set_test_task()]);
+
+        let _ = fs::remove_file(path.main_path());
+        let _ = fs::remove_file(path.backup_path());
+
+        write_file(path.backup_path(), "");
+
+        let err = path.load_backup().unwrap_err();
+        assert!(matches!(err, AppError::NothingToUndo));
+
+        let _ = fs::remove_file(path.main_path());
+        let _ = fs::remove_file(path.backup_path());
+
+        write_file(path.backup_path(), "{Illegal data");
+        let err = path.load_backup().unwrap_err();
+        match err {
+            AppError::Corrupted {
+                path: err_path,
+                source,
+            } => {
+                assert_eq!(err_path, path.backup);
+                assert!(!source.to_string().is_empty());
+            }
+            _ => unreachable!(),
+        }
+        let _ = fs::remove_file(path.main_path());
+        let _ = fs::remove_file(path.backup_path());
+    }
+
+    #[test]
+    fn test_restore_backup() {
+        let file = temp_path("test_restore_backup");
+        let path = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(path.main_path());
+        let _ = fs::remove_file(path.backup_path());
+        write_file(
+            path.main_path(),
+            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+        );
+        write_file(
+            path.backup_path(),
+            &serde_json::to_string_pretty(&vec![set_test_task(), set_test_task()]).unwrap(),
+        );
+
+        assert_eq!(path.load().unwrap(), vec![set_test_task()]);
+        let backup: Vec<Task> =
+            serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
+        assert_eq!(backup, vec![set_test_task(), set_test_task()]);
+
+        path.restore_backup().unwrap();
+        assert_eq!(path.load().unwrap(), vec![set_test_task(), set_test_task()]);
+        assert_eq!(
+            path.load_backup().unwrap(),
+            vec![set_test_task(), set_test_task()]
+        );
+
+        path.restore_backup().unwrap();
+        assert_eq!(path.load().unwrap(), vec![set_test_task(), set_test_task()]);
+        assert_eq!(
+            path.load_backup().unwrap(),
+            vec![set_test_task(), set_test_task()]
+        );
+
+        let _ = fs::remove_file(path.main_path());
+        let _ = fs::remove_file(path.backup_path());
+        write_file(
+            path.main_path(),
+            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+        );
+        write_file(path.backup_path(), "");
+
+        let err = path.restore_backup().unwrap_err();
+        assert!(matches!(err, AppError::NothingToUndo));
+
+        let _ = fs::remove_file(path.main_path());
+        let _ = fs::remove_file(path.backup_path());
+
+        write_file(path.backup_path(), "{Illegal data");
+        let err = path.restore_backup().unwrap_err();
+        match err {
+            AppError::Corrupted {
+                path: err_path,
+                source,
+            } => {
+                assert_eq!(err_path, path.backup);
+                assert!(!source.to_string().is_empty());
+            }
+            _ => unreachable!(),
+        }
         let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }

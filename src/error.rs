@@ -16,6 +16,7 @@ pub enum AppError {
     },
     InvalidLocalTime,
     NothingToChange,
+    NothingToUndo,
     TaskNotFound {
         no: usize,
     },
@@ -57,6 +58,9 @@ impl fmt::Display for AppError {
             }
             AppError::NothingToChange => {
                 write!(f, "Nothing to change, Please enter one or more subcommands")
+            }
+            AppError::NothingToUndo => {
+                write!(f, "Nothing to undo")
             }
             AppError::TaskNotFound { no } => {
                 write!(

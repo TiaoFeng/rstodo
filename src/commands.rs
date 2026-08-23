@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::io::{self, BufRead, Write};
 
 use clap::ValueEnum;
 
@@ -168,6 +169,42 @@ pub fn change_task(
         }
         Ok(())
     })
+}
+
+pub fn undo_task(path: &TaskStore, yes: bool) -> Result<(), AppError> {
+    let backup_tasks = match path.load_backup() {
+        Ok(tasks) => tasks,
+        Err(AppError::NothingToUndo) => {
+            println!("Nothing to undo");
+            return Ok(());
+        }
+        Err(e) => return Err(e),
+    };
+    let current = path.load()?;
+    if backup_tasks == current {
+        println!("Nothing to undo");
+        return Ok(());
+    }
+    println!("The list will be restored to:");
+    println!("{}", list_table(&backup_tasks));
+    if !yes && !confirm(&mut io::stdin().lock()) {
+        println!("Undo cancelled.");
+        return Ok(());
+    }
+    path.restore_backup()?;
+    println!("Undo >_ ");
+    Ok(())
+}
+
+fn confirm(read: &mut dyn BufRead) -> bool {
+    print!("Confirm undo? [y/N] ");
+    let _ = io::stdout().flush();
+    let mut input = String::new();
+    match read.read_line(&mut input) {
+        Ok(0) => false,
+        Ok(_) => matches!(input.trim().to_lowercase().as_str(), "y" | "yes"),
+        Err(_) => false,
+    }
 }
 
 #[cfg(test)]
@@ -448,6 +485,29 @@ mod commands_test {
         assert!(path.load().unwrap()[0]._completed());
         incomplete_task(1, &path).unwrap();
         assert!(!path.load().unwrap()[0]._completed());
+        let _ = fs::remove_file(path.main_path());
+        let _ = fs::remove_file(path.backup_path());
+    }
+
+    #[test]
+    fn test_undo() {
+        let file = temp_path("test_undo");
+        let path = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(path.main_path());
+        let _ = fs::remove_file(path.backup_path());
+
+        set_test_task(&path);
+        add_task("undo_test_content1".to_string(), &path, None, None, None).unwrap();
+        assert_eq!(path.load().unwrap()[3]._content(), "undo_test_content1");
+        assert_eq!(path.load_backup().unwrap()[1]._content(), "task2");
+        assert_eq!(path.load_backup().unwrap()[2]._content(), "task3");
+        assert_eq!(path.load_backup().unwrap().len(), 3);
+
+        undo_task(&path, true).unwrap();
+        assert_eq!(path.load().unwrap()[1]._content(), "task2");
+        assert_eq!(path.load().unwrap()[2]._content(), "task3");
+        assert_eq!(path.load().unwrap().len(), 3);
+
         let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }

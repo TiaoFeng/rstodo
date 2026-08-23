@@ -53,6 +53,10 @@ enum Commands {
     Undone {
         no: usize,
     },
+    Undo {
+        #[arg(short, long)]
+        yes: bool,
+    },
     Delete {
         no: usize,
     },
@@ -79,6 +83,7 @@ fn main() {
         Commands::Show { no } => commands::show_details(no, &store),
         Commands::Done { no } => commands::complete_task(no, &store),
         Commands::Undone { no } => commands::incomplete_task(no, &store),
+        Commands::Undo { yes } => commands::undo_task(&store, yes),
         Commands::Delete { no } => commands::delete_task(no, &store),
     };
     if let Err(apperr) = result {
