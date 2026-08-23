@@ -1,6 +1,6 @@
 [package]
 name = "rust-todo-cli"
-version = "0.3.0-alpha.4"
+version = "0.3.0-beta.1"
 edition = "2024"
 repository = "https://github.com/TiaoFeng/rust-todo-cli"
 description = "A CLI tool for managing to-do lists"
