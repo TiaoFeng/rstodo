@@ -473,7 +473,7 @@ dependencies = [
 
 [[package]]
 name = "rust-todo-cli"
-version = "0.3.0-alpha.2"
+version = "0.3.0-alpha.3"
 dependencies = [
  "chrono",
  "clap",
