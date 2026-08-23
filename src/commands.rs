@@ -4,10 +4,7 @@ use clap::ValueEnum;
 
 use crate::error::AppError;
 use crate::io::cli_print::show_table;
-use crate::io::{
-    cli_print::list_table,
-    storage::{TaskStore, load_tasks_read_only, update_tasks},
-};
+use crate::io::{cli_print::list_table, storage::TaskStore};
 use crate::task::{Priority, Task};
 use crate::time::parse_deadline_input;
 
@@ -30,7 +27,7 @@ pub fn add_task(
         Some(s) => Some(parse_deadline_input(&s)?),
         None => None,
     };
-    update_tasks(path, |tasks| {
+    path.update(|tasks| {
         let new_id: usize = tasks.iter().map(|t| t.id()).max().unwrap_or(0) + 1;
         let new_task: Task = Task::new(
             new_id,
@@ -46,7 +43,7 @@ pub fn add_task(
 
 pub fn list_task(path: &TaskStore, sort: Option<SortBy>) -> Result<(), AppError> {
     if sort.is_none() {
-        let tasks = load_tasks_read_only(path)?;
+        let tasks = path.load()?;
         if tasks.is_empty() {
             println!("No tasks");
             Ok(())
@@ -56,7 +53,7 @@ pub fn list_task(path: &TaskStore, sort: Option<SortBy>) -> Result<(), AppError>
             Ok(())
         }
     } else {
-        update_tasks(path, |tasks| {
+        path.update(|tasks| {
             if tasks.is_empty() {
                 println!("No tasks");
                 return Ok(());
@@ -82,7 +79,7 @@ pub fn list_task(path: &TaskStore, sort: Option<SortBy>) -> Result<(), AppError>
 }
 
 pub fn show_details(no: usize, path: &TaskStore) -> Result<(), AppError> {
-    let tasks = load_tasks_read_only(path)?;
+    let tasks = path.load()?;
     if tasks.is_empty() {
         println!("No tasks");
         return Ok(());
@@ -105,7 +102,7 @@ pub fn show_details(no: usize, path: &TaskStore) -> Result<(), AppError> {
 }
 
 pub fn complete_task(no: usize, path: &TaskStore) -> Result<(), AppError> {
-    update_tasks(path, |tasks| {
+    path.update(|tasks| {
         let idx = no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?;
         let task = tasks.get_mut(idx).ok_or(AppError::TaskNotFound { no })?;
         task.complete();
@@ -114,7 +111,7 @@ pub fn complete_task(no: usize, path: &TaskStore) -> Result<(), AppError> {
 }
 
 pub fn incomplete_task(no: usize, path: &TaskStore) -> Result<(), AppError> {
-    update_tasks(path, |tasks| {
+    path.update(|tasks| {
         let idx = no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?;
         let task = tasks.get_mut(idx).ok_or(AppError::TaskNotFound { no })?;
         task.incomplete();
@@ -123,7 +120,7 @@ pub fn incomplete_task(no: usize, path: &TaskStore) -> Result<(), AppError> {
 }
 
 pub fn delete_task(no: usize, path: &TaskStore) -> Result<(), AppError> {
-    update_tasks(path, |tasks| {
+    path.update(|tasks| {
         let idx = no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?;
         if idx >= tasks.len() {
             return Err(AppError::TaskNotFound { no });
@@ -144,7 +141,7 @@ pub fn change_task(
     if content.is_none() && deadline.is_none() && description.is_none() && priority.is_none() {
         return Err(AppError::NothingToChange);
     }
-    update_tasks(path, |tasks| {
+    path.update(|tasks| {
         let idx = no.checked_sub(1).ok_or(AppError::TaskNotFound { no })?;
         let task = tasks.get_mut(idx).ok_or(AppError::TaskNotFound { no })?;
         if let Some(c) = content {
@@ -224,7 +221,7 @@ mod commands_test {
         )
         .unwrap();
 
-        let tasks = load_tasks_read_only(&path).unwrap();
+        let tasks = path.load().unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id(), 1);
         assert_eq!(tasks[0]._content(), "test_add1");
@@ -242,7 +239,7 @@ mod commands_test {
         assert_eq!(tasks[0].deadline(), Some(expected));
         // 测试2：默认项测试
         add_task("test_add2".to_string(), &path, None, None, None).unwrap();
-        let tasks = load_tasks_read_only(&path).unwrap();
+        let tasks = path.load().unwrap();
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[1].id(), 2);
         assert_eq!(tasks[1]._content(), "test_add2".to_string());
@@ -259,7 +256,7 @@ mod commands_test {
             None,
         )
         .unwrap();
-        let tasks = load_tasks_read_only(&path).unwrap();
+        let tasks = path.load().unwrap();
         assert_eq!(tasks.len(), 3);
         assert_eq!(tasks[2].id(), 3);
         assert_eq!(tasks[2]._content(), "test_add3".to_string());
@@ -283,7 +280,7 @@ mod commands_test {
             )
             .is_err()
         );
-        assert_eq!(load_tasks_read_only(&path).unwrap().len(), 3);
+        assert_eq!(path.load().unwrap().len(), 3);
         let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }
@@ -321,14 +318,14 @@ mod commands_test {
 
         set_test_task(&path);
         delete_task(2, &path).unwrap();
-        let tasks = load_tasks_read_only(&path).unwrap();
+        let tasks = path.load().unwrap();
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0]._content(), "task1".to_string());
         assert_eq!(tasks[1]._content(), "task3".to_string());
 
         assert!(delete_task(0, &path).is_err());
         assert!(delete_task(99, &path).is_err());
-        assert_eq!(load_tasks_read_only(&path).unwrap().len(), 2);
+        assert_eq!(path.load().unwrap().len(), 2);
         let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }
@@ -354,21 +351,17 @@ mod commands_test {
             None,
         )
         .unwrap();
-        let tasks = load_tasks_read_only(&path).unwrap();
+        let tasks = path.load().unwrap();
         assert_eq!(tasks[0]._content(), "change_task2".to_string());
         assert_eq!(tasks[0].description(), Some("new_desc2".to_string()));
 
         // 测试2：清空desc
         change_task(1, &path, None, Some(None), None, None).unwrap();
-        assert!(
-            load_tasks_read_only(&path).unwrap()[0]
-                .description()
-                .is_none()
-        );
+        assert!(path.load().unwrap()[0].description().is_none());
 
         // 测试3：清空deadline
         change_task(1, &path, None, None, Some(None), None).unwrap();
-        assert!(load_tasks_read_only(&path).unwrap()[0].deadline().is_none());
+        assert!(path.load().unwrap()[0].deadline().is_none());
 
         // 测试4：设置deadline
         change_task(
@@ -384,27 +377,18 @@ mod commands_test {
             &NaiveDateTime::parse_from_str("2000-02-01T23:59:59", "%Y-%m-%dT%H:%M:%S").unwrap(),
         )
         .unwrap();
-        assert_eq!(
-            load_tasks_read_only(&path).unwrap()[0].deadline(),
-            Some(expected)
-        );
+        assert_eq!(path.load().unwrap()[0].deadline(), Some(expected));
 
         // 测试5：清空priority
         change_task(3, &path, None, None, None, Some(None)).unwrap();
-        assert_eq!(
-            load_tasks_read_only(&path).unwrap()[2].priority(),
-            Priority::Low
-        );
+        assert_eq!(path.load().unwrap()[2].priority(), Priority::Low);
 
         // 测试6：添加priority
         change_task(3, &path, None, None, None, Some(Some(Priority::Medium))).unwrap();
-        assert_eq!(
-            load_tasks_read_only(&path).unwrap()[2].priority(),
-            Priority::Medium
-        );
+        assert_eq!(path.load().unwrap()[2].priority(), Priority::Medium);
 
         // 测试7：非法数据
-        let tasks = load_tasks_read_only(&path).unwrap();
+        let tasks = path.load().unwrap();
         assert!(
             change_task(
                 1,
@@ -416,7 +400,7 @@ mod commands_test {
             )
             .is_err()
         );
-        assert_eq!(load_tasks_read_only(&path).unwrap(), tasks);
+        assert_eq!(path.load().unwrap(), tasks);
         let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }
@@ -431,7 +415,7 @@ mod commands_test {
         set_test_task(&path);
 
         list_task(&path, Some(SortBy::Deadline)).unwrap();
-        let tasks = load_tasks_read_only(&path).unwrap();
+        let tasks = path.load().unwrap();
         let expected = to_utc(
             &NaiveDateTime::parse_from_str("2000-01-01T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap(),
         )
@@ -440,7 +424,7 @@ mod commands_test {
         assert!(tasks[2].deadline().is_none());
 
         list_task(&path, Some(SortBy::Priority)).unwrap();
-        let tasks = load_tasks_read_only(&path).unwrap();
+        let tasks = path.load().unwrap();
         assert_eq!(tasks[0].priority(), Priority::High);
         assert_eq!(tasks[1].priority(), Priority::Medium);
         assert_eq!(tasks[2].priority(), Priority::Low);
@@ -461,9 +445,9 @@ mod commands_test {
         assert!(complete_task(99, &path).is_err());
 
         complete_task(1, &path).unwrap();
-        assert!(load_tasks_read_only(&path).unwrap()[0]._completed());
+        assert!(path.load().unwrap()[0]._completed());
         incomplete_task(1, &path).unwrap();
-        assert!(!load_tasks_read_only(&path).unwrap()[0]._completed());
+        assert!(!path.load().unwrap()[0]._completed());
         let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
     }
