@@ -212,6 +212,8 @@ mod commands_test {
         let file = temp_path("add");
         let path = FilePath::new(Some(file.clone()));
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+
         // 测试1：全子项写入
         add_task(
             "test_add1".to_string(),
@@ -283,6 +285,7 @@ mod commands_test {
         );
         assert_eq!(load_tasks_read_only(&path).unwrap().len(), 3);
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
     }
 
     #[test]
@@ -290,6 +293,7 @@ mod commands_test {
         let file = temp_path("list_show");
         let path = FilePath::new(Some(file.clone()));
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
 
         assert!(list_task(&path, None).is_ok());
         set_test_task(&path);
@@ -303,6 +307,7 @@ mod commands_test {
         assert!(show_details(0, &path).is_err());
         assert!(show_details(99, &path).is_err());
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
     }
 
     #[test]
@@ -310,6 +315,7 @@ mod commands_test {
         let file = temp_path("delete");
         let path = FilePath::new(Some(file.clone()));
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
 
         assert!(delete_task(1, &path).is_err());
 
@@ -324,6 +330,7 @@ mod commands_test {
         assert!(delete_task(99, &path).is_err());
         assert_eq!(load_tasks_read_only(&path).unwrap().len(), 2);
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
     }
 
     #[test]
@@ -331,6 +338,7 @@ mod commands_test {
         let file = temp_path("change");
         let path = FilePath::new(Some(file.clone()));
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
 
         assert!(change_task(1, &path, None, None, None, None).is_err());
         assert!(change_task(1, &path, Some("change_task1".to_string()), None, None, None).is_err());
@@ -410,6 +418,7 @@ mod commands_test {
         );
         assert_eq!(load_tasks_read_only(&path).unwrap(), tasks);
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
     }
 
     #[test]
@@ -417,6 +426,8 @@ mod commands_test {
         let file = temp_path("sort");
         let path = FilePath::new(Some(file.clone()));
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+
         set_test_task(&path);
 
         list_task(&path, Some(SortBy::Deadline)).unwrap();
@@ -434,6 +445,7 @@ mod commands_test {
         assert_eq!(tasks[1].priority(), Priority::Medium);
         assert_eq!(tasks[2].priority(), Priority::Low);
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
     }
 
     #[test]
@@ -441,6 +453,8 @@ mod commands_test {
         let file = temp_path("done_undone");
         let path = FilePath::new(Some(file.clone()));
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
+
         set_test_task(&path);
 
         assert!(complete_task(0, &path).is_err());
@@ -451,5 +465,6 @@ mod commands_test {
         incomplete_task(1, &path).unwrap();
         assert!(!load_tasks_read_only(&path).unwrap()[0]._completed());
         let _ = fs::remove_file(&file);
+        let _ = fs::remove_file(path.backup_path());
     }
 }
