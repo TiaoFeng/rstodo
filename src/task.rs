@@ -34,7 +34,7 @@ impl fmt::Display for Priority {
 }
 
 /// Task结构体，定义了Task的数据类型与结构
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub struct Task {
     id: usize,
     content: String,

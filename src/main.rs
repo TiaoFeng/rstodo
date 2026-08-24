@@ -6,13 +6,14 @@ mod error;
 mod io;
 mod task;
 mod time;
+mod todo;
 
 use clap::{Parser, Subcommand};
 use io::storage::TaskStore;
 use std::error::Error;
 
-use crate::commands::SortBy;
 use crate::task::Priority;
+use crate::todo::SortBy;
 
 /// 定义CLI结构体，包含全局参数file用于指定自定义地址
 #[derive(Parser)]
@@ -77,20 +78,20 @@ fn main() {
             description,
             deadline,
             priority,
-        } => commands::add_task(content, &store, description, deadline, priority),
+        } => commands::add(content, &store, description, deadline, priority),
         Commands::Change {
             no,
             content,
             description,
             deadline,
             priority,
-        } => commands::change_task(no, &store, content, description, deadline, priority),
-        Commands::List { sort } => commands::list_task(&store, sort),
-        Commands::Show { no } => commands::show_details(no, &store),
-        Commands::Done { no } => commands::complete_task(no, &store),
-        Commands::Undone { no } => commands::incomplete_task(no, &store),
-        Commands::Undo { yes } => commands::undo_task(&store, yes),
-        Commands::Delete { no } => commands::delete_task(no, &store),
+        } => commands::change(no, &store, content, description, deadline, priority),
+        Commands::List { sort } => commands::list(&store, sort),
+        Commands::Show { no } => commands::show(no, &store),
+        Commands::Done { no } => commands::done(no, &store),
+        Commands::Undone { no } => commands::undone(no, &store),
+        Commands::Undo { yes } => commands::undo(&store, yes),
+        Commands::Delete { no } => commands::delete(no, &store),
     };
     if let Err(apperr) = result {
         eprintln!("Error: {}", apperr);
