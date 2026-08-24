@@ -1,5 +1,9 @@
+//! 错误模块
+//!
+//! 定义了可能出现的错误类型，并实现了错误的输出trait
 use std::{error::Error, fmt, path::Path};
 
+/// 项目错误类型枚举
 #[derive(Debug)]
 pub enum AppError {
     Corrupted {
@@ -22,6 +26,7 @@ pub enum AppError {
     },
 }
 
+/// 用于使用端快速的生成 `AppError::Io` 这种错误类型
 pub fn io_err(operation: &'static str, path: &Path, err: std::io::Error) -> AppError {
     AppError::Io {
         operation,
@@ -30,6 +35,7 @@ pub fn io_err(operation: &'static str, path: &Path, err: std::io::Error) -> AppE
     }
 }
 
+/// 为 `AppError` 实现 `fmt::Display` trait，用于定义每种错误的输出内容
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -73,6 +79,7 @@ impl fmt::Display for AppError {
     }
 }
 
+/// 为 `AppError`实现 Error trait，用于传播错误链
 impl Error for AppError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {

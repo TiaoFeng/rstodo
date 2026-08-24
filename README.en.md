@@ -161,6 +161,14 @@ rstodo undone {no}
 ```
 rstodo delete {no}
 ```
+#### 8. Restore from the last operation
+```
+rstodo undo [-y]
+```
+Optional Parameters[-y]
+```
+[-y]   # Note: Confirm execution without a second prompt
+```
 
 ## Build from Source Code
 ```bash

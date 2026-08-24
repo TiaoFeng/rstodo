@@ -1,3 +1,6 @@
+//! 命令模块
+//!
+//! 包含用户可执行的添加、删除、修改、输出、展示、恢复等功能
 use std::cmp::Ordering;
 use std::io::{self, BufRead, Write};
 
@@ -9,6 +12,7 @@ use crate::io::{cli_print::list_table, storage::TaskStore};
 use crate::task::{Priority, Task};
 use crate::time::parse_deadline_input;
 
+/// 定义了用户可选择的两种排序方式，按照时间或优先级
 #[derive(ValueEnum, Clone)]
 pub enum SortBy {
     #[value(alias = "d")]
@@ -46,7 +50,7 @@ pub fn list_task(path: &TaskStore, sort: Option<SortBy>) -> Result<(), AppError>
     if sort.is_none() {
         let tasks = path.load()?;
         if tasks.is_empty() {
-            println!("No tasks");
+            println!("+_+ No tasks");
             Ok(())
         } else {
             let table = list_table(&tasks);
@@ -56,7 +60,7 @@ pub fn list_task(path: &TaskStore, sort: Option<SortBy>) -> Result<(), AppError>
     } else {
         path.update(|tasks| {
             if tasks.is_empty() {
-                println!("No tasks");
+                println!("+_+ No tasks");
                 return Ok(());
             }
             match sort.unwrap() {
@@ -82,7 +86,7 @@ pub fn list_task(path: &TaskStore, sort: Option<SortBy>) -> Result<(), AppError>
 pub fn show_details(no: usize, path: &TaskStore) -> Result<(), AppError> {
     let tasks = path.load()?;
     if tasks.is_empty() {
-        println!("No tasks");
+        println!("+_+ No tasks");
         return Ok(());
     }
 
@@ -95,7 +99,7 @@ pub fn show_details(no: usize, path: &TaskStore) -> Result<(), AppError> {
 
     println!("-Description-");
     if task.description().is_none() {
-        println!("No description");
+        println!("+_+ No description");
     } else {
         println!("{}", task.description().unwrap());
     }
@@ -175,24 +179,24 @@ pub fn undo_task(path: &TaskStore, yes: bool) -> Result<(), AppError> {
     let backup_tasks = match path.load_backup() {
         Ok(tasks) => tasks,
         Err(AppError::NothingToUndo) => {
-            println!("Nothing to undo");
+            println!("+_+ Nothing to undo");
             return Ok(());
         }
         Err(e) => return Err(e),
     };
     let current = path.load()?;
     if backup_tasks == current {
-        println!("Nothing to undo");
+        println!("+_+ Nothing to undo");
         return Ok(());
     }
     println!("The list will be restored to:");
     println!("{}", list_table(&backup_tasks));
     if !yes && !confirm(&mut io::stdin().lock()) {
-        println!("Undo cancelled.");
+        println!(">_< Undo cancelled.");
         return Ok(());
     }
     path.restore_backup()?;
-    println!("Undo >_ ");
+    println!("Undo >>>");
     Ok(())
 }
 
@@ -207,6 +211,7 @@ fn confirm(read: &mut dyn BufRead) -> bool {
     }
 }
 
+/// 单元测试
 #[cfg(test)]
 mod commands_test {
     use super::*;

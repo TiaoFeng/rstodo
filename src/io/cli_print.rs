@@ -1,6 +1,10 @@
+//! CLI打印模块
+//!
+//! 利用comfy_table依赖，实现对于Tasks的表格打印
 use crate::task::{Task, TaskRow};
 use comfy_table::{Cell, CellAlignment, Table, presets};
 
+/// 将传入的整个`&[Task]`整理为表格`Table`返回，用于list
 pub fn list_table(tasks: &[Task]) -> Table {
     let mut table = Table::new();
     table.load_style(presets::ASCII_MARKDOWN);
@@ -45,6 +49,7 @@ pub fn list_table(tasks: &[Task]) -> Table {
     table
 }
 
+/// 将传入的`&Task`中的第no项，整理为表格`Table`返回，用于Show detail
 pub fn show_table(task: &Task, no: usize) -> Table {
     let mut table = Table::new();
     table.load_style(presets::ASCII_MARKDOWN);

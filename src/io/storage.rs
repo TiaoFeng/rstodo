@@ -1,21 +1,38 @@
+//! # storage模块
+//!
+//! 负责读取和保存数据：
+//! - 包括主文件和备份文件
+//! - 若主文件损坏会尝试读取备份文件
+//! - 通过文件锁防止发生并发的读写冲突
 use crate::error::{AppError, io_err};
 use crate::task::Task;
 use std::fs::File;
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
+/// 文件来源枚举，用于标记读取任务列表的来源
+/// - Main 主文件
+/// - Backup 备份文件
 #[derive(Debug, PartialEq)]
 enum Origin {
     Main,
     Backup,
 }
 
+/// 核心tasks结构体，负责保存文件地址，实现公开的读写方法
+///
+/// 包括字段：
+/// - main 主文件地址
+/// - backup 备份文件地址
 pub struct TaskStore {
     main: PathBuf,
     backup: PathBuf,
 }
 
 impl TaskStore {
+    /// 用于初始化创建TaskStore实例
+    /// ### Args:
+    /// custom: `Option<String>` 用户自定义文件保存地址
     pub fn new(custom: Option<String>) -> Self {
         let main = custom.map(PathBuf::from).unwrap_or_else(Self::default_main);
         let mut backup = main.clone().into_os_string();
@@ -26,6 +43,7 @@ impl TaskStore {
         }
     }
 
+    /// 在未传入自定义地址时，利用data_dir生成默认地址，供new使用
     fn default_main() -> PathBuf {
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
@@ -33,14 +51,22 @@ impl TaskStore {
             .join("task.json")
     }
 
+    /// 返回主文件地址
     pub fn main_path(&self) -> &Path {
         &self.main
     }
 
+    /// 返回备份文件地址
     pub fn backup_path(&self) -> &Path {
         &self.backup
     }
 
+    /// Tasks只读方法
+    /// 逻辑：
+    /// 1.若主文件正常，只读主文件
+    /// 2.若主文件不存在，走load_backup_fallback函数尝试读取备份文件
+    /// 3.若主文件为空文件，走load_backup_fallback函数尝试读取备份文件
+    /// 4.若主文件损坏，走load_backup_fallback函数尝试读取备份文件，若备份文件为空或损坏，报错而不覆盖
     pub fn load(&self) -> Result<Vec<Task>, AppError> {
         let file = match open_read(self.main_path()) {
             Ok(file) => file,
@@ -63,6 +89,10 @@ impl TaskStore {
         }
     }
 
+    /// Tasks更新方法
+    /// 逻辑：
+    /// 1.使用load_for_update函数读取(来源，任务列表)
+    /// 2.若读取的是主文件，将主文件备份到副文件，之后再将操作覆盖到主文件
     pub fn update(
         &self,
         f: impl FnOnce(&mut Vec<Task>) -> Result<(), AppError>,
@@ -82,7 +112,7 @@ impl TaskStore {
             && let Err(err) =
                 copy_main_to_backup(&main, self.main_path(), &backup, self.backup_path())
         {
-            eprintln!("Warning: backup failed: {}", err);
+            eprintln!(">_< Warning: backup failed: {}", err);
         };
         overwrite(
             &main,
@@ -92,10 +122,14 @@ impl TaskStore {
         Ok(())
     }
 
+    /// 只读备份文件方法
+    /// 调用load_backup_strict只读备份文件
     pub fn load_backup(&self) -> Result<Vec<Task>, AppError> {
         load_backup_strict(self.backup_path())
     }
 
+    /// 提取备份文件并覆盖主文件
+    /// 将备份文件提取，并通过restore_main_from_backup覆盖到主文件，以实现undo
     pub fn restore_backup(&self) -> Result<(), AppError> {
         create_dir(self.main_path())?;
         let main = open_read_write(self.main_path())?;
@@ -107,6 +141,7 @@ impl TaskStore {
 }
 
 // tier1
+/// 将读取的字符串切片使用serde_json序列化为`Vec<Task>`
 fn parse_tasks(text: &str, path: &Path) -> Result<Option<Vec<Task>>, AppError> {
     if text.trim().is_empty() {
         return Ok(None);
@@ -118,6 +153,7 @@ fn parse_tasks(text: &str, path: &Path) -> Result<Option<Vec<Task>>, AppError> {
     Ok(Some(tasks))
 }
 
+/// 将`&[Task]`的数组使用serde_json格式化为用于保存的`String`
 fn serialize_tasks(tasks: &[Task], path: &Path) -> Result<String, AppError> {
     let data =
         serde_json::to_string_pretty(tasks).map_err(|serde_json_err| AppError::Corrupted {
@@ -128,6 +164,7 @@ fn serialize_tasks(tasks: &[Task], path: &Path) -> Result<String, AppError> {
 }
 
 // tier2
+/// 捕获NotFound(未找到需要打开的文件)错误，用于后续特殊处理
 fn is_not_found(err: &AppError) -> bool {
     matches!(
         err,
@@ -139,6 +176,15 @@ fn is_not_found(err: &AppError) -> bool {
     )
 }
 
+/// 从备份中恢复数据的警告信息
+fn warn_recovered_from_backup(backup_path: &Path) {
+    eprintln!(
+        ">_< Warning: main task file is missing or corrupted, loaded data from backup file '{}'. Changes since the last successful save may be lost.",
+        backup_path.display()
+    )
+}
+
+/// 根据地址，创建需要的文件夹
 fn create_dir(path: &Path) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|err| io_err("create dir", path, err))?;
@@ -146,6 +192,7 @@ fn create_dir(path: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
+/// 传入文件`&Path`，打开并返回只读的文件句柄
 fn open_read(path: &Path) -> Result<File, AppError> {
     let file = File::options()
         .read(true)
@@ -157,6 +204,7 @@ fn open_read(path: &Path) -> Result<File, AppError> {
     Ok(file)
 }
 
+/// 传入文件`&Path`，打开并返回可读写的文件句柄
 fn open_read_write(path: &Path) -> Result<File, AppError> {
     let file = File::options()
         .read(true)
@@ -168,18 +216,21 @@ fn open_read_write(path: &Path) -> Result<File, AppError> {
     Ok(file)
 }
 
+/// 将传入的`&File`句柄使用lock锁定，用于读写修改
 fn lock_private(file: &File, path: &Path) -> Result<(), AppError> {
     file.lock()
         .map_err(|err| io_err("lock private", path, err))?;
     Ok(())
 }
 
+/// 将传入的`&File`句柄使用lock_shared锁定，用于只读项目
 fn lock_share(file: &File, path: &Path) -> Result<(), AppError> {
     file.lock_shared()
         .map_err(|err| io_err("lock shared", path, err))?;
     Ok(())
 }
 
+/// 读取传入的`&File`句柄中的文件内容，返回文件全文的`String`字符串，用于序列化读取
 fn read_string(file: &File, path: &Path) -> Result<String, AppError> {
     let mut f = file
         .try_clone()
@@ -192,6 +243,7 @@ fn read_string(file: &File, path: &Path) -> Result<String, AppError> {
     Ok(text)
 }
 
+/// 读取传入的`&File`句柄中的文件内容，返回文件全文的`Vec<u8>`字符比特，用于覆写其他文件
 fn read_bytes(file: &File, path: &Path) -> Result<Vec<u8>, AppError> {
     let mut f = file
         .try_clone()
@@ -204,6 +256,7 @@ fn read_bytes(file: &File, path: &Path) -> Result<Vec<u8>, AppError> {
     Ok(data)
 }
 
+/// 使用传入的`&[u8]`字符比特，覆写到`&File`传入的文件中
 fn overwrite(file: &File, data: &[u8], path: &Path) -> Result<(), AppError> {
     let mut f = file
         .try_clone()
@@ -218,12 +271,14 @@ fn overwrite(file: &File, data: &[u8], path: &Path) -> Result<(), AppError> {
 }
 
 // tier3
+/// 使用read_string读取文件的内容，并通过parse_tasks序列化为`Option<Vec<Task>>`返回
 fn read_task_from(file: &File, path: &Path) -> Result<Option<Vec<Task>>, AppError> {
     let text = read_string(file, path)?;
     let tasks = parse_tasks(&text, path)?;
     Ok(tasks)
 }
 
+/// 将主文件通过read_bytes读取为字节比特，利用overwrite覆写入备份文件
 fn copy_main_to_backup(
     main: &File,
     main_path: &Path,
@@ -234,14 +289,14 @@ fn copy_main_to_backup(
     overwrite(backup, &data, backup_path)
 }
 
-fn warn_recovered_from_backup(backup_path: &Path) {
-    eprintln!(
-        "Warning: main task file is missing or corrupted, loaded data from backup file '{}'. Changes since the last successful save may be lost.",
-        backup_path.display()
-    )
-}
-
 // tier4
+/// 从主文件或备份中读取任务列表，返回文件来源和任务列表
+///
+/// 逻辑：
+/// - 若主文件正常，返回(Main, 主文件任务列表)
+/// - 若主文件为空文件或损坏，尝试读取备份文件，若备份文件存在内容，发布警告，恢复数据，返回(Backup, 备份文件任务列表)
+/// - 若主文件为空文件，尝试读取备份文件，若备份文件也为空，返回空列表重新开始
+/// - 若主文件损坏，尝试读取备份文件，若备份文件为空，直接返回错误
 fn load_for_update(
     main: &File,
     main_path: &Path,
@@ -267,6 +322,12 @@ fn load_for_update(
     }
 }
 
+/// 为TaskStore中只读的方法提供主文件为空或损坏后的回落
+///
+/// 逻辑：
+/// - 若备份文件存在内容，抛出警告并返回备份文件中的内容
+/// - 若备份文件为空，返回空列表
+/// - 若备份文件损坏，返回错误
 fn load_backup_fallback(backup_path: &Path) -> Result<Vec<Task>, AppError> {
     let backup_file = match open_read(backup_path) {
         Ok(file) => file,
@@ -284,6 +345,12 @@ fn load_backup_fallback(backup_path: &Path) -> Result<Vec<Task>, AppError> {
     }
 }
 
+/// 为TaskStore中只读的读取备份文件提供实现函数
+///
+/// 逻辑：
+/// - 若备份文件不存在，返回`NothingToUndo`错误
+/// - 若备份文件存在且不为空，返回备份文件中的任务列表
+/// - 其他情况，返回`NothingToUndo`错误
 fn load_backup_strict(backup_path: &Path) -> Result<Vec<Task>, AppError> {
     let backup_file = match open_read(backup_path) {
         Ok(file) => file,
@@ -297,6 +364,11 @@ fn load_backup_strict(backup_path: &Path) -> Result<Vec<Task>, AppError> {
     }
 }
 
+/// 为TaskStore中使用备份覆盖主文件的undo操作提供实现函数
+///
+/// 逻辑：
+/// - 读取备份文件中的任务列表，若没有任务，返回`NothingToUndo`错误
+/// - 读取备份文件的字符比特，覆写主文件，完成undo
 fn restore_main_from_backup(
     main: &File,
     main_path: &Path,
@@ -310,6 +382,7 @@ fn restore_main_from_backup(
     overwrite(main, &data, main_path)
 }
 
+/// 单元测试
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, Utc};

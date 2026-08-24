@@ -163,6 +163,14 @@ rstodo undone {no}
 ```
 rstodo delete {no}
 ```
+#### 8. 从上一次操作恢复
+```
+rstodo undo [-y]
+```
+可选参数[-y]）
+```
+[-y]   # 注释：确认执行而无需二次询问
+```
 
 ## 从源代码构建
 ```bash

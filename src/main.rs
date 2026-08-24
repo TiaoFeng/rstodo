@@ -1,3 +1,6 @@
+//! 程序入口
+//!
+//! 使用clap实现终端命令输入
 mod commands;
 mod error;
 mod io;
@@ -11,6 +14,7 @@ use std::error::Error;
 use crate::commands::SortBy;
 use crate::task::Priority;
 
+/// 定义CLI结构体，包含全局参数file用于指定自定义地址
 #[derive(Parser)]
 struct Cli {
     #[arg(long, global = true)]
@@ -19,6 +23,7 @@ struct Cli {
     command: Commands,
 }
 
+/// 子命令结构体
 #[derive(Subcommand)]
 enum Commands {
     Add {
@@ -62,6 +67,7 @@ enum Commands {
     },
 }
 
+/// 程序入口
 fn main() {
     let cli = Cli::parse();
     let store = TaskStore::new(cli.file);

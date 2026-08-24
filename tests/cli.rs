@@ -1,3 +1,6 @@
+//! CLI外部测试模块
+//!
+//! 用于模拟用户端测试CLI是否正常工作
 use std::{
     fs,
     process::{self, Command, Output},
