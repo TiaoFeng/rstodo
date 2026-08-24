@@ -181,7 +181,8 @@ cargo build --release
 ```
 src/
 ├── main.rs           # CLI Command Parsing and Main Program Entry Point
-├── commands.rs       # Implementation of commands such as add, list, complete, and delete
+├── commands.rs       # Interaction Glue Layer for Terminal Interfaces
+├── todo.rs           # Core business code that provides business interfaces
 ├── task.rs           # The `Task` Structure and Related Methods
 ├── time.rs           # Time Format Conversion and Time Zone Handling
 ├── error.rs          # Error Types Used in the Project

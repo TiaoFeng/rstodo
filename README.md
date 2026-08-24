@@ -184,7 +184,8 @@ cargo build --release
 ```
 src/
 ├── main.rs           # CLI 命令解析与主程序入口
-├── commands.rs       # add / list / complete / delete 等命令实现
+├── commands.rs       # 终端界面交互胶水层
+├── todo.rs           # 业务核心代码，提供业务接口
 ├── task.rs           # Task 结构体与相关方法
 ├── time.rs           # 时间格式转换与时区处理
 ├── error.rs          # 项目中使用的错误类型
