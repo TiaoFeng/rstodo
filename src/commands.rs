@@ -47,39 +47,37 @@ pub fn add_task(
 }
 
 pub fn list_task(path: &TaskStore, sort: Option<SortBy>) -> Result<(), AppError> {
-    if sort.is_none() {
-        let tasks = path.load()?;
-        if tasks.is_empty() {
-            println!("+_+ No tasks");
-            Ok(())
-        } else {
-            let table = list_table(&tasks);
-            println!("{}", table);
+    match sort {
+        None => {
+            let tasks = path.load()?;
+            print_task_list(&tasks);
             Ok(())
         }
-    } else {
-        path.update(|tasks| {
-            if tasks.is_empty() {
-                println!("+_+ No tasks");
-                return Ok(());
-            }
-            match sort.unwrap() {
-                SortBy::Deadline => {
-                    tasks.sort_by(|a, b| match (a.deadline(), b.deadline()) {
-                        (Some(d1), Some(d2)) => d1.cmp(&d2),
-                        (Some(_), None) => Ordering::Less,
-                        (None, Some(_)) => Ordering::Greater,
-                        (None, None) => Ordering::Equal,
-                    });
-                }
-                SortBy::Priority => {
-                    tasks.sort_by_key(|t| t.priority());
-                }
-            }
-            let table = list_table(tasks);
-            println!("{}", table);
+        Some(order) => path.update(|tasks| {
+            sort_tasks(tasks, order);
+            print_task_list(tasks);
             Ok(())
-        })
+        }),
+    }
+}
+
+fn print_task_list(tasks: &[Task]) {
+    if tasks.is_empty() {
+        println!("+_+ No tasks");
+    } else {
+        println!("{}", list_table(tasks));
+    }
+}
+
+fn sort_tasks(tasks: &mut [Task], order: SortBy) {
+    match order {
+        SortBy::Deadline => tasks.sort_by(|a, b| match (a.deadline(), b.deadline()) {
+            (Some(d1), Some(d2)) => d1.cmp(&d2),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        }),
+        SortBy::Priority => tasks.sort_by_key(|t| t.priority()),
     }
 }
 
