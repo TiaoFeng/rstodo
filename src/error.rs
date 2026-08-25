@@ -149,6 +149,9 @@ mod error_test {
             AppError::NothingToChange.to_string(),
             "Nothing to change, Please enter one or more subcommands"
         );
+
+        assert_eq!(AppError::NothingToUndo.to_string(), "Nothing to undo");
+
         assert_eq!(
             AppError::TaskNotFound { no: 1 }.to_string(),
             "Task not found: no 1, run `list` to check current numbers"
