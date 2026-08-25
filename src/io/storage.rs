@@ -89,13 +89,35 @@ impl TaskStore {
         }
     }
 
-    /// Tasks更新方法
+    /// Tasks更新方法，同步更新备份
+    ///
     /// 逻辑：
     /// 1.使用load_for_update函数读取(来源，任务列表)
     /// 2.若读取的是主文件，将主文件备份到副文件，之后再将操作覆盖到主文件
-    pub fn update(
+    pub fn update_with_backup(
         &self,
         f: impl FnOnce(&mut Vec<Task>) -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        self.update(f, true)
+    }
+
+    /// Tasks更新方法，不更新备份
+    ///
+    /// 适用于排序，不改变备份文件，这样undo可以回到排序前的操作
+    pub fn update_without_backup(
+        &self,
+        f: impl FnOnce(&mut Vec<Task>) -> Result<(), AppError>,
+    ) -> Result<(), AppError> {
+        self.update(f, false)
+    }
+
+    /// Task更新方法的实现
+    ///
+    /// 通过refresh_backup判断是否执行刷新动作
+    fn update(
+        &self,
+        f: impl FnOnce(&mut Vec<Task>) -> Result<(), AppError>,
+        refresh_backup: bool,
     ) -> Result<(), AppError> {
         create_dir(self.main_path())?;
 
@@ -108,7 +130,8 @@ impl TaskStore {
         let (origin, mut tasks) =
             load_for_update(&main, self.main_path(), &backup, self.backup_path())?;
         f(&mut tasks)?;
-        if origin == Origin::Main
+        if refresh_backup
+            && origin == Origin::Main
             && let Err(err) =
                 copy_main_to_backup(&main, self.main_path(), &backup, self.backup_path())
         {
@@ -467,7 +490,7 @@ mod tests {
         let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
         for _ in 0..5 {
-            path.update(|t| {
+            path.update_with_backup(|t| {
                 t.push(set_test_task());
                 Ok(())
             })
@@ -487,7 +510,7 @@ mod tests {
             assert_eq!(task.priority(), Priority::High);
         }
 
-        path.update(|t| {
+        path.update_with_backup(|t| {
             t.clear();
             Ok(())
         })
@@ -505,14 +528,16 @@ mod tests {
         let _ = fs::remove_file(path.main_path());
         let _ = fs::remove_file(path.backup_path());
 
-        path.update(|t| {
+        path.update_with_backup(|t| {
             t.push(set_test_task());
             Ok(())
         })
         .unwrap();
 
         let before = fs::read_to_string(path.main_path()).unwrap();
-        let err = path.update(|_| Err(AppError::NothingToChange)).unwrap_err();
+        let err = path
+            .update_with_backup(|_| Err(AppError::NothingToChange))
+            .unwrap_err();
         match err {
             AppError::NothingToChange => {}
             _ => unreachable!(),
@@ -588,7 +613,7 @@ mod tests {
         let path = TaskStore::new(Some(file.clone()));
         let _ = fs::remove_dir_all(&dir);
 
-        path.update(|t| {
+        path.update_with_backup(|t| {
             t.push(set_test_task());
             Ok(())
         })
@@ -602,7 +627,7 @@ mod tests {
     #[test]
     fn test_update_create_dir_err() {
         let path = TaskStore::new(Some("".to_string()));
-        let err = path.update(|_| Ok(())).unwrap_err();
+        let err = path.update_with_backup(|_| Ok(())).unwrap_err();
         match err {
             AppError::Io {
                 operation,
@@ -674,7 +699,7 @@ mod tests {
         write_file(path.main_path(), "{Illegal data");
         write_file(path.backup_path(), "");
 
-        match path.update(|t| {
+        match path.update_with_backup(|t| {
             t.push(set_test_task());
             Ok(())
         }) {
@@ -706,7 +731,7 @@ mod tests {
             &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
         );
 
-        path.update(|t| {
+        path.update_with_backup(|t| {
             t.push(set_test_task());
             Ok(())
         })
@@ -735,7 +760,7 @@ mod tests {
             &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
         );
 
-        path.update(|t| {
+        path.update_with_backup(|t| {
             t.push(set_test_task());
             Ok(())
         })

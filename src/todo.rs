@@ -56,7 +56,7 @@ impl TaskUpdate {
         if self.is_empty() {
             return Err(AppError::NothingToChange);
         }
-        store.update(|tasks| {
+        store.update_with_backup(|tasks| {
             if no == 0 || no > tasks.len() {
                 return Err(AppError::TaskNotFound { no });
             }
@@ -96,7 +96,7 @@ pub fn add_task(
     deadline: Option<DateTime<Utc>>,
     priority: Option<Priority>,
 ) -> Result<(), AppError> {
-    store.update(|tasks: &mut Vec<Task>| {
+    store.update_with_backup(|tasks: &mut Vec<Task>| {
         let new_id: usize = tasks.iter().map(|t: &Task| t.id()).max().unwrap_or(0) + 1;
         let new_task: Task = Task::new(
             new_id,
@@ -120,7 +120,7 @@ pub fn list_tasks(store: &TaskStore, sort: Option<SortBy>) -> Result<Option<Vec<
             Ok(Some(tasks))
         }
         Some(order) => {
-            store.update(|tasks: &mut Vec<Task>| {
+            store.update_without_backup(|tasks: &mut Vec<Task>| {
                 sort_tasks(tasks, order);
                 Ok(())
             })?;
@@ -163,7 +163,7 @@ pub fn show_details(no: usize, store: &TaskStore) -> Result<Option<Task>, AppErr
 }
 
 pub fn complete_task(no: usize, store: &TaskStore) -> Result<(), AppError> {
-    store.update(|tasks| {
+    store.update_with_backup(|tasks| {
         if no == 0 || no > tasks.len() {
             Err(AppError::TaskNotFound { no })
         } else {
@@ -175,7 +175,7 @@ pub fn complete_task(no: usize, store: &TaskStore) -> Result<(), AppError> {
 }
 
 pub fn incomplete_task(no: usize, store: &TaskStore) -> Result<(), AppError> {
-    store.update(|tasks| {
+    store.update_with_backup(|tasks| {
         if no == 0 || no > tasks.len() {
             Err(AppError::TaskNotFound { no })
         } else {
@@ -187,7 +187,7 @@ pub fn incomplete_task(no: usize, store: &TaskStore) -> Result<(), AppError> {
 }
 
 pub fn delete_task(no: usize, store: &TaskStore) -> Result<(), AppError> {
-    store.update(|tasks| {
+    store.update_with_backup(|tasks| {
         if no == 0 || no > tasks.len() {
             return Err(AppError::TaskNotFound { no });
         }

@@ -139,19 +139,19 @@ mod commands_test {
             .to_string()
     }
 
-    fn set_test_task(path: &TaskStore) {
+    fn set_test_task(store: &TaskStore) {
         add(
             "task1".into(),
-            path,
+            store,
             Some("desc1".into()),
             Some("2000-01-01T12:00:00".into()),
             Some(Priority::High),
         )
         .unwrap();
-        add("task2".into(), path, None, None, None).unwrap();
+        add("task2".into(), store, None, None, None).unwrap();
         add(
             "task3".into(),
-            path,
+            store,
             None,
             Some("2000-01-02T08:00:00".into()),
             Some(Priority::Medium),
@@ -162,21 +162,21 @@ mod commands_test {
     #[test]
     fn test_add() {
         let file = temp_path("add");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        let store = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
 
         // 测试1：全子项写入
         add(
             "test_add1".to_string(),
-            &path,
+            &store,
             Some("about_assert_add_test".to_string()),
             Some("2000-01-01T12:00:00".to_string()),
             Some(Priority::High),
         )
         .unwrap();
 
-        let tasks = path.load().unwrap();
+        let tasks = store.load().unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id(), 1);
         assert_eq!(tasks[0]._content(), "test_add1");
@@ -193,8 +193,8 @@ mod commands_test {
         .unwrap();
         assert_eq!(tasks[0].deadline(), Some(expected));
         // 测试2：默认项测试
-        add("test_add2".to_string(), &path, None, None, None).unwrap();
-        let tasks = path.load().unwrap();
+        add("test_add2".to_string(), &store, None, None, None).unwrap();
+        let tasks = store.load().unwrap();
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[1].id(), 2);
         assert_eq!(tasks[1]._content(), "test_add2".to_string());
@@ -205,13 +205,13 @@ mod commands_test {
         // 测试3：deadline自动补全测试
         add(
             "test_add3".to_string(),
-            &path,
+            &store,
             None,
             Some("2000-01-02".to_string()),
             None,
         )
         .unwrap();
-        let tasks = path.load().unwrap();
+        let tasks = store.load().unwrap();
         assert_eq!(tasks.len(), 3);
         assert_eq!(tasks[2].id(), 3);
         assert_eq!(tasks[2]._content(), "test_add3".to_string());
@@ -228,100 +228,110 @@ mod commands_test {
         assert!(
             add(
                 "test_add3".to_string(),
-                &path,
+                &store,
                 None,
                 Some("not-a-date".to_string()),
                 None
             )
             .is_err()
         );
-        assert_eq!(path.load().unwrap().len(), 3);
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        assert_eq!(store.load().unwrap().len(), 3);
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
     }
 
     #[test]
     fn test_list_show() {
         let file = temp_path("list_show");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        let store = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
 
-        assert!(list(&path, None).is_ok());
-        set_test_task(&path);
-        assert!(list(&path, Some(SortBy::Priority)).is_ok());
+        assert!(list(&store, None).is_ok());
+        set_test_task(&store);
+        assert!(list(&store, Some(SortBy::Priority)).is_ok());
         println!();
-        assert!(list(&path, Some(SortBy::Deadline)).is_ok());
+        assert!(list(&store, Some(SortBy::Deadline)).is_ok());
         println!();
-        assert!(show(2, &path).is_ok());
+        assert!(show(2, &store).is_ok());
         println!();
 
-        assert!(show(0, &path).is_err());
-        assert!(show(99, &path).is_err());
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        assert!(show(0, &store).is_err());
+        assert!(show(99, &store).is_err());
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
     }
 
     #[test]
     fn test_delete() {
         let file = temp_path("delete");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        let store = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
 
-        assert!(delete(1, &path).is_err());
+        assert!(delete(1, &store).is_err());
 
-        set_test_task(&path);
-        delete(2, &path).unwrap();
-        let tasks = path.load().unwrap();
+        set_test_task(&store);
+        delete(2, &store).unwrap();
+        let tasks = store.load().unwrap();
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[0]._content(), "task1".to_string());
         assert_eq!(tasks[1]._content(), "task3".to_string());
 
-        assert!(delete(0, &path).is_err());
-        assert!(delete(99, &path).is_err());
-        assert_eq!(path.load().unwrap().len(), 2);
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        assert!(delete(0, &store).is_err());
+        assert!(delete(99, &store).is_err());
+        assert_eq!(store.load().unwrap().len(), 2);
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
     }
 
     #[test]
     fn test_change() {
         let file = temp_path("change");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        let store = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
 
-        assert!(change(1, &path, None, None, None, None).is_err());
-        assert!(change(1, &path, Some("change_task1".to_string()), None, None, None).is_err());
+        assert!(change(1, &store, None, None, None, None).is_err());
+        assert!(
+            change(
+                1,
+                &store,
+                Some("change_task1".to_string()),
+                None,
+                None,
+                None
+            )
+            .is_err()
+        );
 
-        set_test_task(&path);
+        set_test_task(&store);
         // 测试1：改content和desc
         change(
             1,
-            &path,
+            &store,
             Some("change_task2".to_string()),
             Some(Some("new_desc2".to_string())),
             None,
             None,
         )
         .unwrap();
-        let tasks = path.load().unwrap();
+        let tasks = store.load().unwrap();
         assert_eq!(tasks[0]._content(), "change_task2".to_string());
         assert_eq!(tasks[0].description(), Some("new_desc2".to_string()));
 
         // 测试2：清空desc
-        change(1, &path, None, Some(None), None, None).unwrap();
-        assert!(path.load().unwrap()[0].description().is_none());
+        change(1, &store, None, Some(None), None, None).unwrap();
+        assert!(store.load().unwrap()[0].description().is_none());
 
         // 测试3：清空deadline
-        change(1, &path, None, None, Some(None), None).unwrap();
-        assert!(path.load().unwrap()[0].deadline().is_none());
+        change(1, &store, None, None, Some(None), None).unwrap();
+        assert!(store.load().unwrap()[0].deadline().is_none());
 
         // 测试4：设置deadline
         change(
             1,
-            &path,
+            &store,
             None,
             None,
             Some(Some("2000-2-1".to_string())),
@@ -332,22 +342,22 @@ mod commands_test {
             &NaiveDateTime::parse_from_str("2000-02-01T23:59:59", "%Y-%m-%dT%H:%M:%S").unwrap(),
         )
         .unwrap();
-        assert_eq!(path.load().unwrap()[0].deadline(), Some(expected));
+        assert_eq!(store.load().unwrap()[0].deadline(), Some(expected));
 
         // 测试5：清空priority
-        change(3, &path, None, None, None, Some(None)).unwrap();
-        assert_eq!(path.load().unwrap()[2].priority(), Priority::Low);
+        change(3, &store, None, None, None, Some(None)).unwrap();
+        assert_eq!(store.load().unwrap()[2].priority(), Priority::Low);
 
         // 测试6：添加priority
-        change(3, &path, None, None, None, Some(Some(Priority::Medium))).unwrap();
-        assert_eq!(path.load().unwrap()[2].priority(), Priority::Medium);
+        change(3, &store, None, None, None, Some(Some(Priority::Medium))).unwrap();
+        assert_eq!(store.load().unwrap()[2].priority(), Priority::Medium);
 
         // 测试7：非法数据
-        let tasks = path.load().unwrap();
+        let tasks = store.load().unwrap();
         assert!(
             change(
                 1,
-                &path,
+                &store,
                 None,
                 None,
                 Some(Some("not-a-date".to_string())),
@@ -355,22 +365,22 @@ mod commands_test {
             )
             .is_err()
         );
-        assert_eq!(path.load().unwrap(), tasks);
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        assert_eq!(store.load().unwrap(), tasks);
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
     }
 
     #[test]
     fn test_sort() {
         let file = temp_path("sort");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        let store = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
 
-        set_test_task(&path);
+        set_test_task(&store);
 
-        list(&path, Some(SortBy::Deadline)).unwrap();
-        let tasks = path.load().unwrap();
+        list(&store, Some(SortBy::Deadline)).unwrap();
+        let tasks = store.load().unwrap();
         let expected = to_utc(
             &NaiveDateTime::parse_from_str("2000-01-01T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap(),
         )
@@ -378,55 +388,80 @@ mod commands_test {
         assert_eq!(tasks[0].deadline(), Some(expected));
         assert!(tasks[2].deadline().is_none());
 
-        list(&path, Some(SortBy::Priority)).unwrap();
-        let tasks = path.load().unwrap();
+        list(&store, Some(SortBy::Priority)).unwrap();
+        let tasks = store.load().unwrap();
         assert_eq!(tasks[0].priority(), Priority::High);
         assert_eq!(tasks[1].priority(), Priority::Medium);
         assert_eq!(tasks[2].priority(), Priority::Low);
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
     }
 
     #[test]
     fn test_done_undone() {
         let file = temp_path("done_undone");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        let store = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
 
-        set_test_task(&path);
+        set_test_task(&store);
 
-        assert!(done(0, &path).is_err());
-        assert!(done(99, &path).is_err());
+        assert!(done(0, &store).is_err());
+        assert!(done(99, &store).is_err());
 
-        done(1, &path).unwrap();
-        assert!(path.load().unwrap()[0]._completed());
-        undone(1, &path).unwrap();
-        assert!(!path.load().unwrap()[0]._completed());
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        done(1, &store).unwrap();
+        assert!(store.load().unwrap()[0]._completed());
+        undone(1, &store).unwrap();
+        assert!(!store.load().unwrap()[0]._completed());
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
     }
 
     #[test]
     fn test_undo() {
         let file = temp_path("test_undo");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        let store = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
 
-        set_test_task(&path);
-        add("undo_test_content1".to_string(), &path, None, None, None).unwrap();
-        assert_eq!(path.load().unwrap()[3]._content(), "undo_test_content1");
-        assert_eq!(path.load_backup().unwrap()[1]._content(), "task2");
-        assert_eq!(path.load_backup().unwrap()[2]._content(), "task3");
-        assert_eq!(path.load_backup().unwrap().len(), 3);
+        set_test_task(&store);
+        add("undo_test_content1".to_string(), &store, None, None, None).unwrap();
+        assert_eq!(store.load().unwrap()[3]._content(), "undo_test_content1");
+        assert_eq!(store.load_backup().unwrap()[1]._content(), "task2");
+        assert_eq!(store.load_backup().unwrap()[2]._content(), "task3");
+        assert_eq!(store.load_backup().unwrap().len(), 3);
 
-        undo(&path, true).unwrap();
-        assert_eq!(path.load().unwrap()[1]._content(), "task2");
-        assert_eq!(path.load().unwrap()[2]._content(), "task3");
-        assert_eq!(path.load().unwrap().len(), 3);
+        undo(&store, true).unwrap();
+        assert_eq!(store.load().unwrap()[1]._content(), "task2");
+        assert_eq!(store.load().unwrap()[2]._content(), "task3");
+        assert_eq!(store.load().unwrap().len(), 3);
 
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
+    }
+
+    #[test]
+    fn test_undo_after_sort() {
+        let file = temp_path("test_undo_after_sort");
+        let store = TaskStore::new(Some(file.clone()));
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
+
+        set_test_task(&store);
+        add("undo_test_content1".to_string(), &store, None, None, None).unwrap();
+        assert_eq!(store.load().unwrap()[3]._content(), "undo_test_content1");
+        assert_eq!(store.load_backup().unwrap()[1]._content(), "task2");
+        assert_eq!(store.load_backup().unwrap()[2]._content(), "task3");
+        assert_eq!(store.load_backup().unwrap().len(), 3);
+
+        list(&store, Some(SortBy::Deadline)).unwrap();
+        list(&store, Some(SortBy::Priority)).unwrap();
+        undo(&store, true).unwrap();
+        assert_eq!(store.load().unwrap()[1]._content(), "task2");
+        assert_eq!(store.load().unwrap()[2]._content(), "task3");
+        assert_eq!(store.load().unwrap().len(), 3);
+
+        let _ = fs::remove_file(store.main_path());
+        let _ = fs::remove_file(store.backup_path());
     }
 }
