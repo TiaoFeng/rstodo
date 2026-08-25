@@ -171,6 +171,8 @@ Optional Parameters[-y]
 ```
 
 ## Build from Source Code
+Rust ≥ 1.89.0
+
 ```bash
 git clone https://github.com/TiaoFeng/rust-todo-cli.git
 cd rust-todo-cli

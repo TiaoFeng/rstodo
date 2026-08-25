@@ -173,6 +173,8 @@ rstodo undo [-y]
 ```
 
 ## 从源代码构建
+Rust ≥ 1.89.0
+
 ```bash
 git clone https://github.com/TiaoFeng/rust-todo-cli.git
 cd rust-todo-cli
