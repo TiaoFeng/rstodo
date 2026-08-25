@@ -152,33 +152,118 @@ fn change_task() {
     let _ = fs::remove_file(format!("{}.bak", file));
 }
 
+/// 测试undo功能
 #[test]
-fn test_error() {
-    let file = temp_path("error");
+fn test_undo() {
+    let file = temp_path("undo");
     let _ = fs::remove_file(&file);
     let _ = fs::remove_file(format!("{}.bak", file));
 
+    assert!(run(&["add", "cli_test1"], &file).stderr.is_empty());
+    assert!(run(&["add", "cli_test2"], &file).stderr.is_empty());
+    let out_string = out_tostring(&run(&["list"], &file));
+    assert!(out_string.contains("cli_test1"));
+    assert!(out_string.contains("cli_test2"));
+
+    assert!(run(&["undo", "-y"], &file).stderr.is_empty());
+    let out_string = out_tostring(&run(&["list"], &file));
+    assert!(out_string.contains("cli_test1"));
+    assert!(!out_string.contains("cli_test2"));
+    let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
+}
+
+/// add, change, delete错误测试
+#[test]
+fn test_error1() {
+    let file = temp_path("error1");
+    let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
+
+    // change输入越界的序号
     let out = run(&["change", "99", "-c", "error_change"], &file);
     assert_eq!(out.status.code(), Some(1));
     let err = err_tostring(&out);
     assert!(err.contains("Task not found"));
 
+    // delete输入越界的序号
     let out = run(&["delete", "0"], &file);
     assert_eq!(out.status.code(), Some(1));
     let err = err_tostring(&out);
     assert!(err.contains("Task not found"));
 
+    // change未输入任何修改
     let out = run(&["change", "1"], &file);
     assert_eq!(out.status.code(), Some(1));
     let err = err_tostring(&out);
     assert!(err.contains("Nothing to change"));
 
+    // 输入不合法的日期
     let out = run(&["add", "err_add", "-d", "not-a-date"], &file);
     assert_eq!(out.status.code(), Some(1));
     let err = err_tostring(&out);
     assert!(err.contains("{%Y-%m-%d}"));
     assert!(err.contains("{%Y-%m-%dT%H:%M:%S}"));
     assert!(fs::read_to_string(&file).unwrap().is_empty());
+
+    let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
+}
+
+/// undo部分错误（其实只是提示）测试
+#[test]
+fn test_error2() {
+    let file = temp_path("error2");
+    let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
+
+    // 重复undo
+    assert!(run(&["add", "cli_test1"], &file).stderr.is_empty());
+    assert!(run(&["add", "cli_test2"], &file).stderr.is_empty());
+    assert!(run(&["undo", "-y"], &file).stderr.is_empty());
+    let out_string = out_tostring(&run(&["list"], &file));
+    assert!(out_string.contains("cli_test1"));
+    assert!(!out_string.contains("cli_test2"));
+    let out = run(&["undo", "-y"], &file);
+    assert!(out.stderr.is_empty());
+    assert!(out_tostring(&out).contains("Nothing to undo"));
+    let out_string = out_tostring(&run(&["list"], &file));
+    assert!(out_string.contains("cli_test1"));
+    assert!(!out_string.contains("cli_test2"));
+
+    // 不存在bak文件undo
+    let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
+
+    assert!(run(&["add", "cli_test1"], &file).stderr.is_empty());
+    assert!(run(&["add", "cli_test2"], &file).stderr.is_empty());
+    let _ = fs::remove_file(format!("{}.bak", file));
+    let out = run(&["undo", "-y"], &file);
+    assert!(out.stderr.is_empty());
+    assert!(out_tostring(&out).contains("Nothing to undo"));
+    let out_string = out_tostring(&run(&["list"], &file));
+    assert!(out_string.contains("cli_test1"));
+    assert!(out_string.contains("cli_test2"));
+
+    // bak文件为空
+    let _ = fs::remove_file(&file);
+    let _ = fs::remove_file(format!("{}.bak", file));
+
+    assert!(run(&["add", "cli_test1"], &file).stderr.is_empty());
+    assert!(run(&["add", "cli_test2"], &file).stderr.is_empty());
+    fs::write(format!("{}.bak", file), "").unwrap();
+    assert!(
+        fs::read_to_string(format!("{}.bak", file))
+            .unwrap()
+            .is_empty()
+    );
+    let out = run(&["undo", "-y"], &file);
+    assert!(out.stderr.is_empty());
+    assert!(out_tostring(&out).contains("Nothing to undo"));
+    let out_string = out_tostring(&run(&["list"], &file));
+    assert!(out_string.contains("cli_test1"));
+    assert!(out_string.contains("cli_test2"));
+
     let _ = fs::remove_file(&file);
     let _ = fs::remove_file(format!("{}.bak", file));
 }
