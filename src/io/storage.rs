@@ -413,14 +413,8 @@ mod tests {
     use crate::task::Priority;
 
     use super::*;
-    use std::{fs, os::unix::fs::PermissionsExt, process};
-
-    fn temp_path(name: &str) -> String {
-        std::env::temp_dir()
-            .join(format!("{}_rstodo_test_{}.json", process::id(), name))
-            .to_string_lossy()
-            .to_string()
-    }
+    use crate::test_helpers::TempGuard;
+    use std::{fs, os::unix::fs::PermissionsExt};
 
     fn write_file(path: &Path, contents: &str) {
         fs::write(path, contents).unwrap();
@@ -452,440 +446,427 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_load_tasks() {
-        let file = temp_path("load");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+    #[cfg(test)]
+    mod tests_load {
+        use super::*;
 
-        assert_eq!(path.load().unwrap(), Vec::new());
+        #[test]
+        fn test_load_tasks() {
+            let guard = TempGuard::new("load");
+            let path = TaskStore::new(Some(guard.path_string()));
 
-        write_file(path.main_path(), "");
-        assert_eq!(path.load().unwrap(), Vec::new());
+            assert_eq!(path.load().unwrap(), Vec::new());
 
-        write_file(
-            path.main_path(),
-            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
-        );
-        let load = path.load().unwrap();
-        assert_eq!(load, vec![set_test_task()]);
+            write_file(path.main_path(), "");
+            assert_eq!(path.load().unwrap(), Vec::new());
 
-        write_file(path.main_path(), "{Illegal data");
-        match path.load() {
-            Err(AppError::Corrupted { path, source: _ }) => {
-                assert_eq!(path, file)
+            write_file(
+                path.main_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+            );
+            let load = path.load().unwrap();
+            assert_eq!(load, vec![set_test_task()]);
+
+            write_file(path.main_path(), "{Illegal data");
+            match path.load() {
+                Err(AppError::Corrupted { path, source: _ }) => {
+                    assert_eq!(path, guard.path_string())
+                }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
         }
 
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        #[test]
+        fn test_load_tasks_err() {
+            let guard = TempGuard::new("load_err_not_utf8");
+            let path = TaskStore::new(Some(guard.path_string()));
+
+            fs::write(path.main_path(), [0xFF, 0xFF]).unwrap();
+            let err = path.load().unwrap_err();
+
+            match err {
+                AppError::Io {
+                    operation,
+                    path: _,
+                    source,
+                } => {
+                    assert_eq!(operation, "read to string");
+                    assert!(!source.to_string().is_empty());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn test_permission_denied() {
+            let guard = TempGuard::new("permission_denied");
+            let path = TaskStore::new(Some(guard.path_string()));
+
+            fs::write(path.main_path(), "test_content").unwrap();
+            assert_eq!(
+                fs::read_to_string(path.main_path()).unwrap(),
+                "test_content".to_string()
+            );
+
+            let no_permission = 0o000;
+            let std_permission = 0o644;
+            fs::set_permissions(path.main_path(), fs::Permissions::from_mode(no_permission))
+                .unwrap();
+            let err = path.load().unwrap_err();
+            match err {
+                AppError::Io {
+                    operation,
+                    path: _,
+                    source,
+                } => {
+                    assert_eq!(operation, "open read");
+                    assert!(!source.to_string().is_empty());
+                }
+                _ => unreachable!(),
+            }
+            fs::set_permissions(path.main_path(), fs::Permissions::from_mode(std_permission))
+                .unwrap();
+        }
     }
 
-    #[test]
-    fn test_update() {
-        let file = temp_path("update");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-        for _ in 0..5 {
+    #[cfg(test)]
+    mod tests_update {
+        use super::*;
+
+        #[test]
+        fn test_update() {
+            let guard = TempGuard::new("update");
+            let path = TaskStore::new(Some(guard.path_string()));
+            for _ in 0..5 {
+                path.update_with_backup(|t| {
+                    t.push(set_test_task());
+                    Ok(())
+                })
+                .unwrap();
+            }
+            let load = path.load().unwrap();
+            assert_eq!(load.len(), 5);
+
+            for task in load.iter().take(5) {
+                assert_eq!(task.id(), 1);
+                assert_eq!(task._content(), "test_task1".to_string());
+                assert_eq!(task.description(), Some("desc".to_string()));
+                assert_eq!(
+                    task.deadline(),
+                    Some("2000-1-1T12:00:00+00:00".parse::<DateTime<Utc>>().unwrap())
+                );
+                assert_eq!(task.priority(), Priority::High);
+            }
+
+            path.update_with_backup(|t| {
+                t.clear();
+                Ok(())
+            })
+            .unwrap();
+            let load = path.load().unwrap();
+            assert_eq!(load, Vec::new());
+        }
+
+        #[test]
+        fn test_update_err() {
+            let guard = TempGuard::new("update_err");
+            let path = TaskStore::new(Some(guard.path_string()));
+
             path.update_with_backup(|t| {
                 t.push(set_test_task());
                 Ok(())
             })
             .unwrap();
-        }
-        let load = path.load().unwrap();
-        assert_eq!(load.len(), 5);
 
-        for task in load.iter().take(5) {
-            assert_eq!(task.id(), 1);
-            assert_eq!(task._content(), "test_task1".to_string());
-            assert_eq!(task.description(), Some("desc".to_string()));
+            let before = fs::read_to_string(path.main_path()).unwrap();
+            let err = path
+                .update_with_backup(|_| Err(AppError::NothingToChange))
+                .unwrap_err();
+            match err {
+                AppError::NothingToChange => {}
+                _ => unreachable!(),
+            }
+            assert_eq!(fs::read_to_string(path.main_path()).unwrap(), before);
+        }
+
+        #[test]
+        fn test_update_create_dir() {
+            let guard = TempGuard::new("create_file");
+            let file = format!("{}/sub/subsub/task.json", guard.path_string());
+            let path = TaskStore::new(Some(file.clone()));
+
+            path.update_with_backup(|t| {
+                t.push(set_test_task());
+                Ok(())
+            })
+            .unwrap();
+            let load = path.load().unwrap();
+            assert_eq!(load.len(), 1);
+            assert_eq!(load[0]._content(), "test_task1".to_string());
+        }
+
+        #[test]
+        fn test_update_create_dir_err() {
+            let path = TaskStore::new(Some("".to_string()));
+            let err = path.update_with_backup(|_| Ok(())).unwrap_err();
+            match err {
+                AppError::Io {
+                    operation,
+                    path: _,
+                    source,
+                } => {
+                    assert_eq!(operation, "open read write");
+                    assert!(!source.to_string().is_empty());
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests_backup {
+        use super::*;
+
+        #[test] // 主文件损坏，备份为空
+        fn test_backup1_fn_readonly() {
+            let guard = TempGuard::new("test_backup1");
+            let path = TaskStore::new(Some(guard.path_string()));
+
+            write_file(path.main_path(), "{Illegal data");
+            write_file(path.backup_path(), "");
+            match path.load() {
+                Err(AppError::Corrupted { path, source }) => {
+                    assert_eq!(path, guard.path_string());
+                    assert!(!source.to_string().is_empty());
+                }
+                _ => unreachable!(),
+            }
             assert_eq!(
-                task.deadline(),
-                Some("2000-1-1T12:00:00+00:00".parse::<DateTime<Utc>>().unwrap())
+                fs::read_to_string(path.main_path()).unwrap(),
+                "{Illegal data"
             );
-            assert_eq!(task.priority(), Priority::High);
         }
 
-        path.update_with_backup(|t| {
-            t.clear();
-            Ok(())
-        })
-        .unwrap();
-        let load = path.load().unwrap();
-        assert_eq!(load, Vec::new());
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-    }
+        #[test] // 主文件损坏，备份完好，从备份恢复
+        fn test_backup2_fn_readonly() {
+            let guard = TempGuard::new("test_backup2");
+            let path = TaskStore::new(Some(guard.path_string()));
 
-    #[test]
-    fn test_update_err() {
-        let file = temp_path("update_err");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-
-        path.update_with_backup(|t| {
-            t.push(set_test_task());
-            Ok(())
-        })
-        .unwrap();
-
-        let before = fs::read_to_string(path.main_path()).unwrap();
-        let err = path
-            .update_with_backup(|_| Err(AppError::NothingToChange))
-            .unwrap_err();
-        match err {
-            AppError::NothingToChange => {}
-            _ => unreachable!(),
+            write_file(path.main_path(), "{Illegal data");
+            write_file(
+                path.backup_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+            );
+            let load = path.load().unwrap();
+            assert_eq!(load, vec![set_test_task()]);
+            let backup: Vec<Task> =
+                serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
+            assert_eq!(backup, load);
+            assert_eq!(backup, vec![set_test_task()]);
         }
-        assert_eq!(fs::read_to_string(path.main_path()).unwrap(), before);
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-    }
 
-    #[test]
-    fn test_load_tasks_err() {
-        let file = temp_path("load_err_not_utf8");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+        #[test] // 主文件损坏，备份为空
+        fn test_backup3_fn_readwrite() {
+            let guard = TempGuard::new("test_backup3");
+            let path = TaskStore::new(Some(guard.path_string()));
 
-        fs::write(path.main_path(), [0xFF, 0xFF]).unwrap();
-        let err = path.load().unwrap_err();
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+            write_file(path.main_path(), "{Illegal data");
+            write_file(path.backup_path(), "");
 
-        match err {
-            AppError::Io {
-                operation,
-                path: _,
-                source,
-            } => {
-                assert_eq!(operation, "read to string");
-                assert!(!source.to_string().is_empty());
+            match path.update_with_backup(|t| {
+                t.push(set_test_task());
+                Ok(())
+            }) {
+                Err(AppError::Corrupted { path, source }) => {
+                    assert_eq!(path, guard.path_string());
+                    assert!(!source.to_string().is_empty());
+                }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
+            assert_eq!(
+                fs::read_to_string(path.main_path()).unwrap(),
+                "{Illegal data"
+            );
+        }
+
+        #[test] // 主文件损坏，备份完好，从备份恢复
+        fn test_backup4_fn_readwrite() {
+            let guard = TempGuard::new("test_backup4");
+            let path = TaskStore::new(Some(guard.path_string()));
+
+            write_file(path.main_path(), "{Illegal data");
+            write_file(
+                path.backup_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+            );
+
+            path.update_with_backup(|t| {
+                t.push(set_test_task());
+                Ok(())
+            })
+            .unwrap();
+            let load = path.load().unwrap();
+            assert_eq!(load.len(), 2);
+            assert_eq!(load[0]._content(), "test_task1".to_string());
+            assert_eq!(load[1]._content(), "test_task1".to_string());
+            let backup: Vec<Task> =
+                serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
+            assert_eq!(backup, vec![set_test_task()]);
+        }
+
+        #[test] // 主文件确实，备份完好，从备份恢复
+        fn test_backup5_fn_readwrite() {
+            let guard = TempGuard::new("test_backup5");
+            let path = TaskStore::new(Some(guard.path_string()));
+
+            write_file(
+                path.backup_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+            );
+
+            path.update_with_backup(|t| {
+                t.push(set_test_task());
+                Ok(())
+            })
+            .unwrap();
+            let load = path.load().unwrap();
+            assert_eq!(load.len(), 2);
+            assert_eq!(load[0]._content(), "test_task1".to_string());
+            assert_eq!(load[1]._content(), "test_task1".to_string());
+            let backup: Vec<Task> =
+                serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
+            assert_eq!(backup, vec![set_test_task()]);
         }
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn test_permission_denied() {
-        let file = temp_path("permission_denied");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
+    #[cfg(test)]
+    mod tests_load_backup {
+        use super::*;
 
-        fs::write(path.main_path(), "test_content").unwrap();
-        assert_eq!(
-            fs::read_to_string(path.main_path()).unwrap(),
-            "test_content".to_string()
-        );
+        #[test]
+        fn test_load_backup() {
+            let guard = TempGuard::new("test_load_backup");
+            let path = TaskStore::new(Some(guard.path_string()));
 
-        let no_permission = 0o000;
-        let std_permission = 0o644;
-        fs::set_permissions(path.main_path(), fs::Permissions::from_mode(no_permission)).unwrap();
-        let err = path.load().unwrap_err();
-        match err {
-            AppError::Io {
-                operation,
-                path: _,
-                source,
-            } => {
-                assert_eq!(operation, "open read");
-                assert!(!source.to_string().is_empty());
+            write_file(
+                path.backup_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+            );
+            let tasks = path.load_backup().unwrap();
+            assert_eq!(tasks, vec![set_test_task()]);
+        }
+
+        #[test]
+        fn test_load_notexist_backup() {
+            let guard = TempGuard::new("test_load_notexist_backup");
+            let path = TaskStore::new(Some(guard.path_string()));
+
+            let err = path.load_backup().unwrap_err();
+            assert!(matches!(err, AppError::NothingToUndo));
+        }
+
+        #[test]
+        fn test_load_empty_backup() {
+            let guard = TempGuard::new("test_load_empty_backup");
+            let path = TaskStore::new(Some(guard.path_string()));
+
+            write_file(path.backup_path(), "");
+
+            let err = path.load_backup().unwrap_err();
+            assert!(matches!(err, AppError::NothingToUndo));
+        }
+
+        #[test]
+        fn test_load_illegal_backup() {
+            let guard = TempGuard::new("test_load_illegal_backup");
+            let path = TaskStore::new(Some(guard.path_string()));
+
+            write_file(path.backup_path(), "{Illegal data");
+            let err = path.load_backup().unwrap_err();
+            match err {
+                AppError::Corrupted {
+                    path: err_path,
+                    source,
+                } => {
+                    assert_eq!(err_path, path.backup);
+                    assert!(!source.to_string().is_empty());
+                }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
         }
-        fs::set_permissions(path.main_path(), fs::Permissions::from_mode(std_permission)).unwrap();
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
     }
 
-    #[test]
-    fn test_update_create_dir() {
-        let dir = temp_path("create_file");
-        let file = format!("{}/sub/subsub/task.json", dir);
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_dir_all(&dir);
+    #[cfg(test)]
+    mod tests_restore_backup {
+        use super::*;
 
-        path.update_with_backup(|t| {
-            t.push(set_test_task());
-            Ok(())
-        })
-        .unwrap();
-        let load = path.load().unwrap();
-        let _ = fs::remove_dir_all(&dir);
-        assert_eq!(load.len(), 1);
-        assert_eq!(load[0]._content(), "test_task1".to_string());
-    }
+        #[test]
+        fn test_restore_backup() {
+            let guard = TempGuard::new("test_restore_backup");
+            let path = TaskStore::new(Some(guard.path_string()));
 
-    #[test]
-    fn test_update_create_dir_err() {
-        let path = TaskStore::new(Some("".to_string()));
-        let err = path.update_with_backup(|_| Ok(())).unwrap_err();
-        match err {
-            AppError::Io {
-                operation,
-                path: _,
-                source,
-            } => {
-                assert_eq!(operation, "open read write");
-                assert!(!source.to_string().is_empty());
+            write_file(
+                path.main_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+            );
+            write_file(
+                path.backup_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task(), set_test_task()]).unwrap(),
+            );
+
+            assert_eq!(path.load().unwrap(), vec![set_test_task()]);
+            let backup: Vec<Task> =
+                serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
+            assert_eq!(backup, vec![set_test_task(), set_test_task()]);
+
+            path.restore_backup().unwrap();
+            assert_eq!(path.load().unwrap(), vec![set_test_task(), set_test_task()]);
+            assert_eq!(
+                path.load_backup().unwrap(),
+                vec![set_test_task(), set_test_task()]
+            );
+
+            path.restore_backup().unwrap();
+            assert_eq!(path.load().unwrap(), vec![set_test_task(), set_test_task()]);
+            assert_eq!(
+                path.load_backup().unwrap(),
+                vec![set_test_task(), set_test_task()]
+            );
+        }
+
+        #[test]
+        fn test_restore_empty_backup() {
+            let guard = TempGuard::new("test_restore_empty_backup");
+            let path = TaskStore::new(Some(guard.path_string()));
+
+            write_file(
+                path.main_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+            );
+            write_file(path.backup_path(), "");
+
+            let err = path.restore_backup().unwrap_err();
+            assert!(matches!(err, AppError::NothingToUndo));
+        }
+
+        #[test]
+        fn test_restore_illegal_backup() {
+            let guard = TempGuard::new("test_restore_illegal_backup");
+            let path = TaskStore::new(Some(guard.path_string()));
+
+            write_file(path.backup_path(), "{Illegal data");
+            let err = path.restore_backup().unwrap_err();
+            match err {
+                AppError::Corrupted {
+                    path: err_path,
+                    source,
+                } => {
+                    assert_eq!(err_path, path.backup);
+                    assert!(!source.to_string().is_empty());
+                }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
         }
-    }
-
-    #[test] // 主文件损坏，备份为空
-    fn test_backup1_fn_readonly() {
-        let file = temp_path("test_backup1");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-
-        write_file(path.main_path(), "{Illegal data");
-        write_file(path.backup_path(), "");
-        match path.load() {
-            Err(AppError::Corrupted { path, source }) => {
-                assert_eq!(path, file);
-                assert!(!source.to_string().is_empty());
-            }
-            _ => unreachable!(),
-        }
-        assert_eq!(
-            fs::read_to_string(path.main_path()).unwrap(),
-            "{Illegal data"
-        );
-
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-    }
-
-    #[test] // 主文件损坏，备份完好，从备份恢复
-    fn test_backup2_fn_readonly() {
-        let file = temp_path("test_backup2");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-
-        write_file(path.main_path(), "{Illegal data");
-        write_file(
-            path.backup_path(),
-            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
-        );
-        let load = path.load().unwrap();
-        assert_eq!(load, vec![set_test_task()]);
-        let backup: Vec<Task> =
-            serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
-        assert_eq!(backup, load);
-        assert_eq!(backup, vec![set_test_task()]);
-
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-    }
-
-    #[test] // 主文件损坏，备份为空
-    fn test_backup3_fn_readwrite() {
-        let file = temp_path("test_backup3");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-
-        write_file(path.main_path(), "{Illegal data");
-        write_file(path.backup_path(), "");
-
-        match path.update_with_backup(|t| {
-            t.push(set_test_task());
-            Ok(())
-        }) {
-            Err(AppError::Corrupted { path, source }) => {
-                assert_eq!(path, file);
-                assert!(!source.to_string().is_empty());
-            }
-            _ => unreachable!(),
-        }
-        assert_eq!(
-            fs::read_to_string(path.main_path()).unwrap(),
-            "{Illegal data"
-        );
-
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-    }
-
-    #[test] // 主文件损坏，备份完好，从备份恢复
-    fn test_backup4_fn_readwrite() {
-        let file = temp_path("test_backup4");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-
-        write_file(path.main_path(), "{Illegal data");
-        write_file(
-            path.backup_path(),
-            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
-        );
-
-        path.update_with_backup(|t| {
-            t.push(set_test_task());
-            Ok(())
-        })
-        .unwrap();
-        let load = path.load().unwrap();
-        assert_eq!(load.len(), 2);
-        assert_eq!(load[0]._content(), "test_task1".to_string());
-        assert_eq!(load[1]._content(), "test_task1".to_string());
-        let backup: Vec<Task> =
-            serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
-        assert_eq!(backup, vec![set_test_task()]);
-
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-    }
-
-    #[test] // 主文件确实，备份完好，从备份恢复
-    fn test_backup5_fn_readwrite() {
-        let file = temp_path("test_backup5");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-
-        write_file(
-            path.backup_path(),
-            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
-        );
-
-        path.update_with_backup(|t| {
-            t.push(set_test_task());
-            Ok(())
-        })
-        .unwrap();
-        let load = path.load().unwrap();
-        assert_eq!(load.len(), 2);
-        assert_eq!(load[0]._content(), "test_task1".to_string());
-        assert_eq!(load[1]._content(), "test_task1".to_string());
-        let backup: Vec<Task> =
-            serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
-        assert_eq!(backup, vec![set_test_task()]);
-
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-    }
-
-    #[test]
-    fn test_load_backup() {
-        let file = temp_path("test_load_backup");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-
-        let err = path.load_backup().unwrap_err();
-        assert!(matches!(err, AppError::NothingToUndo));
-
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-
-        write_file(
-            path.backup_path(),
-            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
-        );
-
-        let tasks = path.load_backup().unwrap();
-        assert_eq!(tasks, vec![set_test_task()]);
-
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-
-        write_file(path.backup_path(), "");
-
-        let err = path.load_backup().unwrap_err();
-        assert!(matches!(err, AppError::NothingToUndo));
-
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-
-        write_file(path.backup_path(), "{Illegal data");
-        let err = path.load_backup().unwrap_err();
-        match err {
-            AppError::Corrupted {
-                path: err_path,
-                source,
-            } => {
-                assert_eq!(err_path, path.backup);
-                assert!(!source.to_string().is_empty());
-            }
-            _ => unreachable!(),
-        }
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-    }
-
-    #[test]
-    fn test_restore_backup() {
-        let file = temp_path("test_restore_backup");
-        let path = TaskStore::new(Some(file.clone()));
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-        write_file(
-            path.main_path(),
-            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
-        );
-        write_file(
-            path.backup_path(),
-            &serde_json::to_string_pretty(&vec![set_test_task(), set_test_task()]).unwrap(),
-        );
-
-        assert_eq!(path.load().unwrap(), vec![set_test_task()]);
-        let backup: Vec<Task> =
-            serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
-        assert_eq!(backup, vec![set_test_task(), set_test_task()]);
-
-        path.restore_backup().unwrap();
-        assert_eq!(path.load().unwrap(), vec![set_test_task(), set_test_task()]);
-        assert_eq!(
-            path.load_backup().unwrap(),
-            vec![set_test_task(), set_test_task()]
-        );
-
-        path.restore_backup().unwrap();
-        assert_eq!(path.load().unwrap(), vec![set_test_task(), set_test_task()]);
-        assert_eq!(
-            path.load_backup().unwrap(),
-            vec![set_test_task(), set_test_task()]
-        );
-
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-        write_file(
-            path.main_path(),
-            &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
-        );
-        write_file(path.backup_path(), "");
-
-        let err = path.restore_backup().unwrap_err();
-        assert!(matches!(err, AppError::NothingToUndo));
-
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
-
-        write_file(path.backup_path(), "{Illegal data");
-        let err = path.restore_backup().unwrap_err();
-        match err {
-            AppError::Corrupted {
-                path: err_path,
-                source,
-            } => {
-                assert_eq!(err_path, path.backup);
-                assert!(!source.to_string().is_empty());
-            }
-            _ => unreachable!(),
-        }
-        let _ = fs::remove_file(path.main_path());
-        let _ = fs::remove_file(path.backup_path());
     }
 }
