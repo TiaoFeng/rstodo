@@ -28,7 +28,7 @@ impl TempGuard {
     }
 
     /// 传String给TaskStore::new用
-    pub fn path_string(&self) -> String {
+    pub fn main_path(&self) -> String {
         self.main.to_string_lossy().to_string()
     }
 }

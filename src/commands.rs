@@ -155,7 +155,7 @@ mod commands_test {
     #[test]
     fn test_add() {
         let guard = TempGuard::new("add");
-        let store = TaskStore::new(Some(guard.path_string()));
+        let store = TaskStore::new(Some(guard.main_path()));
 
         // 测试1：全子项写入
         add(
@@ -232,7 +232,7 @@ mod commands_test {
     #[test]
     fn test_list_show() {
         let guard = TempGuard::new("list_show");
-        let store = TaskStore::new(Some(guard.path_string()));
+        let store = TaskStore::new(Some(guard.main_path()));
 
         assert!(list(&store, None).is_ok());
         set_test_task(&store);
@@ -250,7 +250,7 @@ mod commands_test {
     #[test]
     fn test_delete() {
         let guard = TempGuard::new("delete");
-        let store = TaskStore::new(Some(guard.path_string()));
+        let store = TaskStore::new(Some(guard.main_path()));
 
         assert!(delete(1, &store).is_err());
 
@@ -269,7 +269,7 @@ mod commands_test {
     #[test]
     fn test_change() {
         let guard = TempGuard::new("change");
-        let store = TaskStore::new(Some(guard.path_string()));
+        let store = TaskStore::new(Some(guard.main_path()));
 
         assert!(change(1, &store, None, None, None, None).is_err());
         assert!(
@@ -350,7 +350,7 @@ mod commands_test {
     #[test]
     fn test_sort() {
         let guard = TempGuard::new("sort");
-        let store = TaskStore::new(Some(guard.path_string()));
+        let store = TaskStore::new(Some(guard.main_path()));
 
         set_test_task(&store);
 
@@ -373,7 +373,7 @@ mod commands_test {
     #[test]
     fn test_done_undone() {
         let guard = TempGuard::new("done_undone");
-        let store = TaskStore::new(Some(guard.path_string()));
+        let store = TaskStore::new(Some(guard.main_path()));
 
         set_test_task(&store);
 
@@ -393,7 +393,7 @@ mod commands_test {
         #[test]
         fn test_undo() {
             let guard = TempGuard::new("test_undo");
-            let store = TaskStore::new(Some(guard.path_string()));
+            let store = TaskStore::new(Some(guard.main_path()));
 
             set_test_task(&store);
             add("undo_test_content1".to_string(), &store, None, None, None).unwrap();
@@ -411,7 +411,7 @@ mod commands_test {
         #[test]
         fn test_undo_after_sort() {
             let guard = TempGuard::new("test_undo_after_sort");
-            let store = TaskStore::new(Some(guard.path_string()));
+            let store = TaskStore::new(Some(guard.main_path()));
 
             set_test_task(&store);
             add("undo_test_content1".to_string(), &store, None, None, None).unwrap();
