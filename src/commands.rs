@@ -171,10 +171,7 @@ mod commands_test {
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id(), 1);
         assert_eq!(tasks[0]._content(), "test_add1");
-        assert_eq!(
-            tasks[0].description(),
-            Some("about_assert_add_test".to_string())
-        );
+        assert_eq!(tasks[0].description(), Some("about_assert_add_test"));
         assert_eq!(tasks[0].priority(), Priority::High);
         assert!(!tasks[0]._completed());
 
@@ -297,7 +294,7 @@ mod commands_test {
         .unwrap();
         let tasks = store.load().unwrap();
         assert_eq!(tasks[0]._content(), "change_task2".to_string());
-        assert_eq!(tasks[0].description(), Some("new_desc2".to_string()));
+        assert_eq!(tasks[0].description(), Some("new_desc2"));
 
         // 测试2：清空desc
         change(1, &store, None, Some(None), None, None).unwrap();

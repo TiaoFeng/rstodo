@@ -551,7 +551,7 @@ mod tests {
             for task in load.iter().take(5) {
                 assert_eq!(task.id(), 1);
                 assert_eq!(task._content(), "test_task1".to_string());
-                assert_eq!(task.description(), Some("desc".to_string()));
+                assert_eq!(task.description(), Some("desc"));
                 assert_eq!(
                     task.deadline(),
                     Some("2000-1-1T12:00:00+00:00".parse::<DateTime<Utc>>().unwrap())

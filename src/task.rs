@@ -77,8 +77,8 @@ impl Task {
     }
 
     /// 返回Task的description，可以为None
-    pub fn description(&self) -> Option<String> {
-        self.description.clone()
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
     }
 
     /// 返回Task是否完成，暂时还未使用
@@ -182,7 +182,7 @@ mod task_test {
 
         assert_eq!(task.id(), 1001);
         assert_eq!(task._content(), "test_content1".to_string());
-        assert_eq!(task.description(), Some("test_description1".to_string()));
+        assert_eq!(task.description(), Some("test_description1"));
         assert_eq!(task.priority(), Priority::Low);
         assert!(!task._completed());
 
@@ -192,7 +192,7 @@ mod task_test {
         task.set_content("test_content2".to_string());
         assert_eq!(task._content(), "test_content2".to_string());
         task.set_description(Some("test_description2".to_string()));
-        assert_eq!(task.description(), Some("test_description2".to_string()));
+        assert_eq!(task.description(), Some("test_description2"));
         task.set_description(None);
         assert!(task.description().is_none());
         task.complete();
