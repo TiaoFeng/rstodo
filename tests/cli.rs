@@ -3,8 +3,11 @@
 //! 用于模拟用户端测试CLI是否正常工作
 use std::{
     fs,
-    process::{self, Command, Output},
+    process::{Command, Output},
 };
+
+mod utils;
+use utils::temp_guard::TempGuard;
 
 fn run(args: &[&str], file: &str) -> Output {
     Command::new(env!("CARGO_BIN_EXE_rstodo"))
@@ -15,13 +18,6 @@ fn run(args: &[&str], file: &str) -> Output {
         .expect("failed to run rstodo")
 }
 
-fn temp_path(name: &str) -> String {
-    std::env::temp_dir()
-        .join(format!("{}_rstodo_tests_cli_{}.json", process::id(), name))
-        .to_string_lossy()
-        .to_string()
-}
-
 fn out_tostring(out: &Output) -> String {
     String::from_utf8(out.stdout.clone()).unwrap()
 }
@@ -30,76 +26,78 @@ fn err_tostring(out: &Output) -> String {
     String::from_utf8(out.stderr.clone()).unwrap()
 }
 
-#[test]
-fn test_add_list_data() {
-    let file = temp_path("add_list");
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
+#[cfg(test)]
+mod tests_add_list {
+    use super::*;
 
-    let out = run(
-        &[
-            "add",
-            "cli_test1",
-            "-D",
-            "cli_desc1",
-            "-d",
-            "2000-1-1",
-            "-p",
-            "high",
-        ],
-        &file,
-    );
-    assert!(out.status.success());
-    assert!(out.stderr.is_empty());
+    #[test]
+    fn test_add_list() {
+        let guard = TempGuard::new("add_list");
 
-    let out = run(&["list"], &file);
-    assert!(out.status.success());
-    assert!(out.stderr.is_empty());
-    let out_string = out_tostring(&out);
-    assert!(out_string.contains("cli_test1"));
-    assert!(out_string.contains("2000-01-01"));
-    assert!(out_string.contains("23:59:59"));
-    assert!(out_string.contains("High"));
-    assert!(out_string.contains("Show desc"));
+        let out = run(
+            &[
+                "add",
+                "cli_test1",
+                "-D",
+                "cli_desc1",
+                "-d",
+                "2000-1-1",
+                "-p",
+                "high",
+            ],
+            &guard.main_path(),
+        );
+        assert!(out.status.success());
+        assert!(out.stderr.is_empty());
 
-    let empty_file = temp_path("empty");
-    let out = run(&["list"], &empty_file);
-    assert!(out_tostring(&out).contains("No tasks"));
+        let out = run(&["list"], &guard.main_path());
+        assert!(out.status.success());
+        assert!(out.stderr.is_empty());
+        let out_string = out_tostring(&out);
+        assert!(out_string.contains("cli_test1"));
+        assert!(out_string.contains("2000-01-01"));
+        assert!(out_string.contains("23:59:59"));
+        assert!(out_string.contains("High"));
+        assert!(out_string.contains("Show desc"));
+    }
 
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(&empty_file);
-    let _ = fs::remove_file(format!("{}.bak", file));
-    let _ = fs::remove_file(format!("{}.bak", empty_file));
+    #[test]
+    fn test_list_empty() {
+        let guard = TempGuard::new("empty");
+        let out = run(&["list"], &guard.main_path());
+        assert!(out_tostring(&out).contains("No tasks"));
+    }
 }
 
 #[test]
 fn test_sort() {
-    let file = temp_path("sort");
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
+    let guard = TempGuard::new("sort");
 
     assert!(
-        run(&["add", "cli_test1", "-D", "cli_desc1", "-p", "low"], &file)
+        run(
+            &["add", "cli_test1", "-D", "cli_desc1", "-p", "low"],
+            &guard.main_path()
+        )
+        .stderr
+        .is_empty()
+    );
+    assert!(
+        run(&["add", "cli_test2", "-D", "cli_desc2"], &guard.main_path())
             .stderr
             .is_empty()
     );
     assert!(
-        run(&["add", "cli_test2", "-D", "cli_desc2"], &file)
+        run(&["add", "cli_test3", "-p", "high"], &guard.main_path())
             .stderr
             .is_empty()
     );
     assert!(
-        run(&["add", "cli_test3", "-p", "high"], &file)
-            .stderr
-            .is_empty()
-    );
-    assert!(
-        run(&["add", "cli_test4", "-p", "medium"], &file)
+        run(&["add", "cli_test4", "-p", "medium"], &guard.main_path())
             .stderr
             .is_empty()
     );
 
-    let out = run(&["list", "p"], &file);
+    let out = run(&["list", "p"], &guard.main_path());
     let out_string = out_tostring(&out);
     let high = out_string
         .find("cli_test3")
@@ -114,156 +112,183 @@ fn test_sort() {
         .find("cli_test2")
         .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
     assert!(high < mid && mid < low1 && mid < low2);
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
 }
 
 #[test]
-fn change_task() {
-    let file = temp_path("change");
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
-
-    assert!(run(&["add", "cli_test1"], &file).stderr.is_empty());
-    assert!(run(&["add", "cli_test2"], &file).stderr.is_empty());
-    assert!(run(&["done", "1"], &file).stderr.is_empty());
-    let out_string = out_tostring(&run(&["list"], &file));
-    assert!(out_string.contains("✓"));
-
-    assert!(run(&["undone", "1"], &file).stderr.is_empty());
-    let out_string = out_tostring(&run(&["list"], &file));
-    assert!(!out_string.contains("✓"));
+fn test_change_task() {
+    let guard = TempGuard::new("change");
 
     assert!(
-        run(&["change", "1", "-c", "cli_test1_change"], &file)
+        run(&["add", "cli_test1"], &guard.main_path())
             .stderr
             .is_empty()
     );
-    let out_string = out_tostring(&run(&["list"], &file));
+    assert!(
+        run(&["add", "cli_test2"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+    assert!(run(&["done", "1"], &guard.main_path()).stderr.is_empty());
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+    assert!(out_string.contains("✓"));
+
+    assert!(run(&["undone", "1"], &guard.main_path()).stderr.is_empty());
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+    assert!(!out_string.contains("✓"));
+
+    assert!(
+        run(
+            &["change", "1", "-c", "cli_test1_change"],
+            &guard.main_path()
+        )
+        .stderr
+        .is_empty()
+    );
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
     assert!(out_string.contains("cli_test1_change"));
 
     assert!(out_string.contains("cli_test2"));
-    assert!(run(&["delete", "2"], &file).stderr.is_empty());
-    let out_string = out_tostring(&run(&["list"], &file));
+    assert!(run(&["delete", "2"], &guard.main_path()).stderr.is_empty());
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
     assert!(!out_string.contains("cli_test2"));
     assert!(out_string.contains("cli_test1_change"));
-
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
 }
 
 /// 测试undo功能
 #[test]
 fn test_undo() {
-    let file = temp_path("undo");
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
+    let guard = TempGuard::new("undo");
 
-    assert!(run(&["add", "cli_test1"], &file).stderr.is_empty());
-    assert!(run(&["add", "cli_test2"], &file).stderr.is_empty());
-    let out_string = out_tostring(&run(&["list"], &file));
-    assert!(out_string.contains("cli_test1"));
-    assert!(out_string.contains("cli_test2"));
-
-    assert!(run(&["undo", "-y"], &file).stderr.is_empty());
-    let out_string = out_tostring(&run(&["list"], &file));
-    assert!(out_string.contains("cli_test1"));
-    assert!(!out_string.contains("cli_test2"));
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
-}
-
-/// add, change, delete错误测试
-#[test]
-fn test_error1() {
-    let file = temp_path("error1");
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
-
-    // change输入越界的序号
-    let out = run(&["change", "99", "-c", "error_change"], &file);
-    assert_eq!(out.status.code(), Some(1));
-    let err = err_tostring(&out);
-    assert!(err.contains("Task not found"));
-
-    // delete输入越界的序号
-    let out = run(&["delete", "0"], &file);
-    assert_eq!(out.status.code(), Some(1));
-    let err = err_tostring(&out);
-    assert!(err.contains("Task not found"));
-
-    // change未输入任何修改
-    let out = run(&["change", "1"], &file);
-    assert_eq!(out.status.code(), Some(1));
-    let err = err_tostring(&out);
-    assert!(err.contains("Nothing to change"));
-
-    // 输入不合法的日期
-    let out = run(&["add", "err_add", "-d", "not-a-date"], &file);
-    assert_eq!(out.status.code(), Some(1));
-    let err = err_tostring(&out);
-    assert!(err.contains("{%Y-%m-%d}"));
-    assert!(err.contains("{%Y-%m-%dT%H:%M:%S}"));
-    assert!(fs::read_to_string(&file).unwrap().is_empty());
-
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
-}
-
-/// undo部分错误（其实只是提示）测试
-#[test]
-fn test_error2() {
-    let file = temp_path("error2");
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
-
-    // 重复undo
-    assert!(run(&["add", "cli_test1"], &file).stderr.is_empty());
-    assert!(run(&["add", "cli_test2"], &file).stderr.is_empty());
-    assert!(run(&["undo", "-y"], &file).stderr.is_empty());
-    let out_string = out_tostring(&run(&["list"], &file));
-    assert!(out_string.contains("cli_test1"));
-    assert!(!out_string.contains("cli_test2"));
-    let out = run(&["undo", "-y"], &file);
-    assert!(out.stderr.is_empty());
-    assert!(out_tostring(&out).contains("Nothing to undo"));
-    let out_string = out_tostring(&run(&["list"], &file));
-    assert!(out_string.contains("cli_test1"));
-    assert!(!out_string.contains("cli_test2"));
-
-    // 不存在bak文件undo
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
-
-    assert!(run(&["add", "cli_test1"], &file).stderr.is_empty());
-    assert!(run(&["add", "cli_test2"], &file).stderr.is_empty());
-    let _ = fs::remove_file(format!("{}.bak", file));
-    let out = run(&["undo", "-y"], &file);
-    assert!(out.stderr.is_empty());
-    assert!(out_tostring(&out).contains("Nothing to undo"));
-    let out_string = out_tostring(&run(&["list"], &file));
-    assert!(out_string.contains("cli_test1"));
-    assert!(out_string.contains("cli_test2"));
-
-    // bak文件为空
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
-
-    assert!(run(&["add", "cli_test1"], &file).stderr.is_empty());
-    assert!(run(&["add", "cli_test2"], &file).stderr.is_empty());
-    fs::write(format!("{}.bak", file), "").unwrap();
     assert!(
-        fs::read_to_string(format!("{}.bak", file))
-            .unwrap()
+        run(&["add", "cli_test1"], &guard.main_path())
+            .stderr
             .is_empty()
     );
-    let out = run(&["undo", "-y"], &file);
-    assert!(out.stderr.is_empty());
-    assert!(out_tostring(&out).contains("Nothing to undo"));
-    let out_string = out_tostring(&run(&["list"], &file));
+    assert!(
+        run(&["add", "cli_test2"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
     assert!(out_string.contains("cli_test1"));
     assert!(out_string.contains("cli_test2"));
 
-    let _ = fs::remove_file(&file);
-    let _ = fs::remove_file(format!("{}.bak", file));
+    assert!(run(&["undo", "-y"], &guard.main_path()).stderr.is_empty());
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+    assert!(out_string.contains("cli_test1"));
+    assert!(!out_string.contains("cli_test2"));
+}
+
+#[cfg(test)]
+mod tests_error {
+    use super::*;
+
+    #[test]
+    fn test_error_basic() {
+        let guard = TempGuard::new("test_error_basic");
+
+        // change输入越界的序号
+        let out = run(&["change", "99", "-c", "error_change"], &guard.main_path());
+        assert_eq!(out.status.code(), Some(1));
+        let err = err_tostring(&out);
+        assert!(err.contains("Task not found"));
+
+        // delete输入越界的序号
+        let out = run(&["delete", "0"], &guard.main_path());
+        assert_eq!(out.status.code(), Some(1));
+        let err = err_tostring(&out);
+        assert!(err.contains("Task not found"));
+
+        // change未输入任何修改
+        let out = run(&["change", "1"], &guard.main_path());
+        assert_eq!(out.status.code(), Some(1));
+        let err = err_tostring(&out);
+        assert!(err.contains("Nothing to change"));
+
+        // 输入不合法的日期
+        let out = run(&["add", "err_add", "-d", "not-a-date"], &guard.main_path());
+        assert_eq!(out.status.code(), Some(1));
+        let err = err_tostring(&out);
+        assert!(err.contains("{%Y-%m-%d}"));
+        assert!(err.contains("{%Y-%m-%dT%H:%M:%S}"));
+        assert!(fs::read_to_string(guard.main_path()).unwrap().is_empty());
+    }
+
+    /// undo部分错误（其实只是提示）测试
+    #[test]
+    fn test_repeat_undo() {
+        let guard = TempGuard::new("test_repeat_undo");
+
+        // 重复undo
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(run(&["undo", "-y"], &guard.main_path()).stderr.is_empty());
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(out_string.contains("cli_test1"));
+        assert!(!out_string.contains("cli_test2"));
+        let out = run(&["undo", "-y"], &guard.main_path());
+        assert!(out.stderr.is_empty());
+        assert!(out_tostring(&out).contains("Nothing to undo"));
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(out_string.contains("cli_test1"));
+        assert!(!out_string.contains("cli_test2"));
+    }
+
+    #[test]
+    fn test_notexist_undo() {
+        let guard = TempGuard::new("test_notexist_undo");
+
+        // 不存在bak文件undo
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+
+        let _ = fs::remove_file(guard.backup_path());
+        let out = run(&["undo", "-y"], &guard.main_path());
+        assert!(out.stderr.is_empty());
+        assert!(out_tostring(&out).contains("Nothing to undo"));
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(out_string.contains("cli_test1"));
+        assert!(out_string.contains("cli_test2"));
+    }
+
+    #[test]
+    fn test_empty_undo() {
+        let guard = TempGuard::new("test_empty_undo");
+
+        // bak文件为空
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        fs::write(guard.backup_path(), "").unwrap();
+        assert!(fs::read_to_string(guard.backup_path()).unwrap().is_empty());
+        let out = run(&["undo", "-y"], &guard.main_path());
+        assert!(out.stderr.is_empty());
+        assert!(out_tostring(&out).contains("Nothing to undo"));
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(out_string.contains("cli_test1"));
+        assert!(out_string.contains("cli_test2"));
+    }
 }
