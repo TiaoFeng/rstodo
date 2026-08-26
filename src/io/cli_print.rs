@@ -16,7 +16,7 @@ fn set_alignment(table: &mut Table, alignments: &[CellAlignment]) {
 /// 根据传入的表头列表，设置每一列的表头
 fn set_header(table: &mut Table, headers: &[&str]) {
     let header_vec: Vec<Cell> = headers
-        .into_iter()
+        .iter()
         .map(|h| Cell::new(h).set_alignment(CellAlignment::Center))
         .collect();
     table.set_header(header_vec);
