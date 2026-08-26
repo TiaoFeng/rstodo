@@ -81,8 +81,8 @@ impl Task {
         self.description.as_deref()
     }
 
-    /// 返回Task是否完成，暂时还未使用
-    pub fn _completed(&self) -> bool {
+    /// 返回Task是否完成
+    pub fn completed(&self) -> bool {
         self.completed
     }
 
@@ -184,7 +184,7 @@ mod task_test {
         assert_eq!(task._content(), "test_content1".to_string());
         assert_eq!(task.description(), Some("test_description1"));
         assert_eq!(task.priority(), Priority::Low);
-        assert!(!task._completed());
+        assert!(!task.completed());
 
         let expected = "2000-01-01T12:00:00+00:00".parse().unwrap();
         assert_eq!(task.deadline(), Some(expected));
@@ -196,9 +196,9 @@ mod task_test {
         task.set_description(None);
         assert!(task.description().is_none());
         task.complete();
-        assert!(task._completed());
+        assert!(task.completed());
         task.incomplete();
-        assert!(!task._completed());
+        assert!(!task.completed());
         task.set_priority(Priority::High);
         assert_eq!(task.priority(), Priority::High);
 

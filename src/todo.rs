@@ -211,3 +211,40 @@ pub fn undo_task_preview(store: &TaskStore) -> Result<Vec<Task>, AppError> {
 pub fn undo_task_apply(store: &TaskStore, snapshot: &[Task]) -> Result<(), AppError> {
     store.restore_backup(snapshot)
 }
+
+/// 任务状态结构体，用于显示任务状态清单
+pub struct TaskStatus {
+    total: usize,
+    done: usize,
+    undone: usize,
+}
+
+impl TaskStatus {
+    /// 收集传入TaskStore的任务状态
+    ///
+    /// 包括：
+    /// - total：总计任务数量
+    /// - done： 完成的任务数量
+    /// - undone： 未完成的任务数量
+    pub fn collect(store: &TaskStore) -> Result<Self, AppError> {
+        let tasks = store.load()?;
+        let total = tasks.len();
+        let done = tasks.iter().filter(|task| task.completed()).count();
+        Ok(TaskStatus {
+            total,
+            done,
+            undone: total - done,
+        })
+    }
+
+    /// 输出符合cli_print.rs中转换为表格所需要每一行的数据
+    ///
+    /// 返回一个Vec列表元组，第一位&Str为元素的名称，第二位usize表示对应的数量
+    pub fn rows(&self) -> Vec<(&str, usize)> {
+        vec![
+            ("Total", self.total),
+            ("Done", self.done),
+            ("Undone", self.undone),
+        ]
+    }
+}

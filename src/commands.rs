@@ -7,13 +7,18 @@
 use std::io::{self, BufRead, Write};
 
 use crate::error::AppError;
-use crate::io::cli_print::show_table;
-use crate::io::{cli_print::list_table, storage::TaskStore};
+use crate::io::{
+    cli_print::{
+        tasks_status_table::status_table,
+        tasks_table::{list_table, show_table},
+    },
+    storage::TaskStore,
+};
 use crate::task::Priority;
 use crate::time::parse_deadline_input;
 use crate::todo::{
-    SortBy, TaskUpdate, add_task, complete_task, delete_task, incomplete_task, list_tasks,
-    show_details, undo_task_apply, undo_task_preview,
+    SortBy, TaskStatus, TaskUpdate, add_task, complete_task, delete_task, incomplete_task,
+    list_tasks, show_details, undo_task_apply, undo_task_preview,
 };
 
 pub fn add(
@@ -124,6 +129,12 @@ fn confirm(read: &mut dyn BufRead) -> bool {
     }
 }
 
+pub fn status(store: &TaskStore) -> Result<(), AppError> {
+    let task_status = TaskStatus::collect(store)?;
+    println!("{}", status_table(&task_status));
+    Ok(())
+}
+
 /// 单元测试
 #[cfg(test)]
 mod commands_test {
@@ -173,7 +184,7 @@ mod commands_test {
         assert_eq!(tasks[0]._content(), "test_add1");
         assert_eq!(tasks[0].description(), Some("about_assert_add_test"));
         assert_eq!(tasks[0].priority(), Priority::High);
-        assert!(!tasks[0]._completed());
+        assert!(!tasks[0].completed());
 
         let expected = to_utc(
             &NaiveDateTime::parse_from_str("2000-01-01T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap(),
@@ -189,7 +200,7 @@ mod commands_test {
         assert_eq!(tasks[1].priority(), Priority::Low);
         assert!(tasks[1].deadline().is_none());
         assert!(tasks[1].description().is_none());
-        assert!(!tasks[1]._completed());
+        assert!(!tasks[1].completed());
         // 测试3：deadline自动补全测试
         add(
             "test_add3".to_string(),
@@ -205,7 +216,7 @@ mod commands_test {
         assert_eq!(tasks[2]._content(), "test_add3".to_string());
         assert_eq!(tasks[2].priority(), Priority::Low);
         assert!(tasks[2].description().is_none());
-        assert!(!tasks[2]._completed());
+        assert!(!tasks[2].completed());
 
         let expected = to_utc(
             &NaiveDateTime::parse_from_str("2000-01-02T23:59:59", "%Y-%m-%dT%H:%M:%S").unwrap(),
@@ -378,9 +389,9 @@ mod commands_test {
         assert!(done(99, &store).is_err());
 
         done(1, &store).unwrap();
-        assert!(store.load().unwrap()[0]._completed());
+        assert!(store.load().unwrap()[0].completed());
         undone(1, &store).unwrap();
-        assert!(!store.load().unwrap()[0]._completed());
+        assert!(!store.load().unwrap()[0].completed());
     }
 
     #[cfg(test)]
@@ -423,6 +434,36 @@ mod commands_test {
             assert_eq!(store.load().unwrap()[1]._content(), "task2");
             assert_eq!(store.load().unwrap()[2]._content(), "task3");
             assert_eq!(store.load().unwrap().len(), 3);
+        }
+    }
+
+    #[cfg(test)]
+    mod tests_status {
+        use super::*;
+
+        #[test]
+        fn test_status_count() {
+            let guard = TempGuard::new("test_status_count");
+            let store = TaskStore::new(Some(guard.main_path()));
+            set_test_task(&store);
+            assert!(done(1, &store).is_ok());
+
+            let count = TaskStatus::collect(&store).unwrap();
+            assert_eq!(count.rows(), vec![("Total", 3), ("Done", 1), ("Undone", 2)]);
+        }
+
+        #[test]
+        fn test_status() {
+            let guard = TempGuard::new("test_status");
+            let store = TaskStore::new(Some(guard.main_path()));
+
+            assert!(status(&store).is_ok());
+            set_test_task(&store);
+            assert!(status(&store).is_ok());
+            assert!(delete(1, &store).is_ok());
+            assert!(status(&store).is_ok());
+            assert!(done(1, &store).is_ok());
+            assert!(status(&store).is_ok());
         }
     }
 }

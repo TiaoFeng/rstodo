@@ -56,6 +56,7 @@ enum Commands {
     Show {
         no: usize,
     },
+    Status,
     Done {
         no: usize,
     },
@@ -91,6 +92,7 @@ fn main() {
         } => commands::change(no, &store, content, description, deadline, priority),
         Commands::List { sort } => commands::list(&store, sort),
         Commands::Show { no } => commands::show(no, &store),
+        Commands::Status => commands::status(&store),
         Commands::Done { no } => commands::done(no, &store),
         Commands::Undone { no } => commands::undone(no, &store),
         Commands::Undo { yes } => commands::undo(&store, yes),
