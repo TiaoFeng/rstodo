@@ -258,6 +258,72 @@ mod tests_undo {
 }
 
 #[cfg(test)]
+mod tests_status {
+    use super::*;
+
+    fn status_count(out: &Output, item: &str) -> usize {
+        let out_string = out_tostring(out);
+        let line = out_string
+            .lines()
+            .find(|l| l.trim_start().starts_with(item))
+            .unwrap();
+        line.split_whitespace()
+            .next_back()
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_status() {
+        let guard = TempGuard::new("test_status");
+
+        let out = run(&["status"], &guard.main_path());
+        assert!(out.stderr.is_empty());
+        assert_eq!(status_count(&out, "Total"), 0);
+        assert_eq!(status_count(&out, "Done"), 0);
+        assert_eq!(status_count(&out, "Undone"), 0);
+
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test3"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        let out = run(&["status"], &guard.main_path());
+        assert!(out.stderr.is_empty());
+        assert_eq!(status_count(&out, "Total"), 3);
+        assert_eq!(status_count(&out, "Done"), 0);
+        assert_eq!(status_count(&out, "Undone"), 3);
+
+        assert!(run(&["done", "1"], &guard.main_path()).stderr.is_empty());
+        let out = run(&["status"], &guard.main_path());
+        assert!(out.stderr.is_empty());
+        assert_eq!(status_count(&out, "Total"), 3);
+        assert_eq!(status_count(&out, "Done"), 1);
+        assert_eq!(status_count(&out, "Undone"), 2);
+
+        assert!(run(&["delete", "1"], &guard.main_path()).stderr.is_empty());
+        assert!(run(&["delete", "1"], &guard.main_path()).stderr.is_empty());
+        assert!(run(&["delete", "1"], &guard.main_path()).stderr.is_empty());
+        let out = run(&["status"], &guard.main_path());
+        assert!(out.stderr.is_empty());
+        assert_eq!(status_count(&out, "Total"), 0);
+        assert_eq!(status_count(&out, "Done"), 0);
+        assert_eq!(status_count(&out, "Undone"), 0);
+    }
+}
+
+#[cfg(test)]
 mod tests_error {
     use super::*;
 
