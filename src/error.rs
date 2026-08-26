@@ -24,6 +24,7 @@ pub enum AppError {
     TaskNotFound {
         no: usize,
     },
+    UndoConflict,
 }
 
 /// 用于使用端快速的生成 `AppError::Io` 这种错误类型
@@ -73,6 +74,12 @@ impl fmt::Display for AppError {
                     f,
                     "Task not found: no {}, run `list` to check current numbers",
                     no
+                )
+            }
+            AppError::UndoConflict => {
+                write!(
+                    f,
+                    "Task list changed since the undo preview, please run 'undo' again",
                 )
             }
         }
@@ -156,6 +163,11 @@ mod error_test {
             AppError::TaskNotFound { no: 1 }.to_string(),
             "Task not found: no 1, run `list` to check current numbers"
         );
+
+        assert_eq!(
+            AppError::UndoConflict.to_string(),
+            "Task list changed since the undo preview, please run 'undo' again",
+        )
     }
 
     #[test]

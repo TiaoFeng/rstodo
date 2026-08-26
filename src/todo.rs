@@ -208,6 +208,6 @@ pub fn undo_task_preview(store: &TaskStore) -> Result<Vec<Task>, AppError> {
 }
 
 /// 执行恢复任务，将备份写入主文件
-pub fn undo_task_apply(store: &TaskStore) -> Result<(), AppError> {
-    store.restore_backup()
+pub fn undo_task_apply(store: &TaskStore, snapshot: &[Task]) -> Result<(), AppError> {
+    store.restore_backup(snapshot)
 }

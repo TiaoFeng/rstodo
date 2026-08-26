@@ -153,13 +153,23 @@ impl TaskStore {
 
     /// 提取备份文件并覆盖主文件
     /// 将备份文件提取，并通过restore_main_from_backup覆盖到主文件，以实现undo
-    pub fn restore_backup(&self) -> Result<(), AppError> {
+    ///
+    /// snapshot，用于对比undo预览的快照与目前进行操作的backup文件，以免被篡改
+    ///
+    /// 若snapshot与目前的备份文件不匹配，返回错误UndoConflict
+    pub fn restore_backup(&self, snapshot: &[Task]) -> Result<(), AppError> {
         create_dir(self.main_path())?;
         let main = open_read_write(self.main_path())?;
         let backup = open_read_write(self.backup_path())?;
         lock_private(&main, self.main_path())?;
         lock_private(&backup, self.backup_path())?;
-        restore_main_from_backup(&main, self.main_path(), &backup, self.backup_path())
+
+        let now = read_task_from(&backup, self.backup_path())?.unwrap_or_default();
+        if snapshot == now {
+            restore_main_from_backup(&main, self.main_path(), &backup, self.backup_path())
+        } else {
+            Err(AppError::UndoConflict)
+        }
     }
 }
 
@@ -820,14 +830,14 @@ mod tests {
                 serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
             assert_eq!(backup, vec![set_test_task(), set_test_task()]);
 
-            path.restore_backup().unwrap();
+            path.restore_backup(&backup).unwrap();
             assert_eq!(path.load().unwrap(), vec![set_test_task(), set_test_task()]);
             assert_eq!(
                 path.load_backup().unwrap(),
                 vec![set_test_task(), set_test_task()]
             );
 
-            path.restore_backup().unwrap();
+            path.restore_backup(&backup).unwrap();
             assert_eq!(path.load().unwrap(), vec![set_test_task(), set_test_task()]);
             assert_eq!(
                 path.load_backup().unwrap(),
@@ -846,7 +856,7 @@ mod tests {
             );
             write_file(path.backup_path(), "");
 
-            let err = path.restore_backup().unwrap_err();
+            let err = path.restore_backup(&[]).unwrap_err();
             assert!(matches!(err, AppError::NothingToUndo));
         }
 
@@ -856,7 +866,7 @@ mod tests {
             let path = TaskStore::new(Some(guard.main_path()));
 
             write_file(path.backup_path(), "{Illegal data");
-            let err = path.restore_backup().unwrap_err();
+            let err = path.restore_backup(&Vec::new()).unwrap_err();
             match err {
                 AppError::Corrupted {
                     path: err_path,
@@ -867,6 +877,30 @@ mod tests {
                 }
                 _ => unreachable!(),
             }
+        }
+
+        #[test]
+        fn test_restore_conflict_backup() {
+            let guard = TempGuard::new("test_restore_conflict_backup");
+            let path = TaskStore::new(Some(guard.main_path()));
+
+            write_file(
+                path.main_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+            );
+            write_file(
+                path.backup_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task(), set_test_task()]).unwrap(),
+            );
+
+            let conflict_snapshot = &[set_test_task()];
+            let err = path.restore_backup(conflict_snapshot).unwrap_err();
+            assert!(matches!(err, AppError::UndoConflict));
+            assert_eq!(path.load().unwrap(), vec![set_test_task()]);
+            assert_eq!(
+                path.load_backup().unwrap(),
+                vec![set_test_task(), set_test_task()]
+            );
         }
     }
 }

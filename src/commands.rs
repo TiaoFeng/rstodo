@@ -108,7 +108,7 @@ pub fn undo(store: &TaskStore, yes: bool) -> Result<(), AppError> {
         println!(">_< Undo cancelled.");
         return Ok(());
     }
-    undo_task_apply(store)?;
+    undo_task_apply(store, &backup_tasks)?;
     println!("Undo >>>");
     Ok(())
 }
