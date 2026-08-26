@@ -3,7 +3,8 @@
 //! 用于模拟用户端测试CLI是否正常工作
 use std::{
     fs,
-    process::{Command, Output},
+    io::Write,
+    process::{Command, Output, Stdio},
 };
 
 mod utils;
@@ -16,6 +17,27 @@ fn run(args: &[&str], file: &str) -> Output {
         .args(args)
         .output()
         .expect("failed to run rstodo")
+}
+
+/// 带有输入的run进程
+fn run_with_input(args: &[&str], file: &str, input: &str) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rstodo"))
+        .arg("--file")
+        .arg(file)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
 }
 
 fn out_tostring(out: &Output) -> String {
@@ -155,28 +177,84 @@ fn test_change_task() {
 }
 
 /// 测试undo功能
-#[test]
-fn test_undo() {
-    let guard = TempGuard::new("undo");
+#[cfg(test)]
+mod tests_undo {
+    use super::*;
 
-    assert!(
-        run(&["add", "cli_test1"], &guard.main_path())
-            .stderr
-            .is_empty()
-    );
-    assert!(
-        run(&["add", "cli_test2"], &guard.main_path())
-            .stderr
-            .is_empty()
-    );
-    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
-    assert!(out_string.contains("cli_test1"));
-    assert!(out_string.contains("cli_test2"));
+    #[test]
+    fn test_undo() {
+        let guard = TempGuard::new("undo");
 
-    assert!(run(&["undo", "-y"], &guard.main_path()).stderr.is_empty());
-    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
-    assert!(out_string.contains("cli_test1"));
-    assert!(!out_string.contains("cli_test2"));
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(out_string.contains("cli_test1"));
+        assert!(out_string.contains("cli_test2"));
+
+        assert!(run(&["undo", "-y"], &guard.main_path()).stderr.is_empty());
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(out_string.contains("cli_test1"));
+        assert!(!out_string.contains("cli_test2"));
+    }
+
+    #[test]
+    fn test_undo_confirm_yes() {
+        let guard = TempGuard::new("test_undo_confirm_yes");
+
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(out_string.contains("cli_test1"));
+        assert!(out_string.contains("cli_test2"));
+
+        assert!(
+            run_with_input(&["undo"], &guard.main_path(), "yes")
+                .stderr
+                .is_empty()
+        );
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(out_string.contains("cli_test1"));
+        assert!(!out_string.contains("cli_test2"));
+    }
+
+    #[test]
+    fn test_undo_confirm_no() {
+        let guard = TempGuard::new("test_undo_confirm_no");
+
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(out_string.contains("cli_test1"));
+        assert!(out_string.contains("cli_test2"));
+
+        let out = run_with_input(&["undo"], &guard.main_path(), "no");
+        assert!(out.stderr.is_empty());
+        assert!(out_tostring(&out).contains("cancelled"));
+    }
 }
 
 #[cfg(test)]
