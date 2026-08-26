@@ -24,26 +24,32 @@ fn set_header(table: &mut Table, headers: &[&str]) {
 
 /// 用于输出任务列表的表格
 pub mod tasks_table {
+    use chrono::{DateTime, Utc};
+    use comfy_table::Color;
+
     use super::*;
-    use crate::task::{Task, TaskRow};
+    use crate::task::Task;
+    use crate::time::to_local_time;
+
+    const DEADLINE_COL: usize = 3;
 
     /// 将传入的整个`&[Task]`整理为表格`Table`返回，用于list
-    pub fn list_table(tasks: &[Task]) -> Table {
+    pub fn list_table(tasks: &[Task], now: DateTime<Utc>) -> Table {
         let mut table = new_task_table();
 
         for (i, task) in tasks.iter().enumerate() {
             let row = TaskRow { task, no: i + 1 };
-            table.add_row(row.to_table());
+            table.add_row(row.to_table(now));
         }
         table
     }
 
     /// 将传入的`&Task`中的第no项，整理为表格`Table`返回，用于Show detail
-    pub fn show_table(task: &Task, no: usize) -> Table {
+    pub fn show_table(task: &Task, no: usize, now: DateTime<Utc>) -> Table {
         let mut table = new_task_table();
 
         let row = TaskRow { task, no };
-        table.add_row(row.to_table());
+        table.add_row(row.to_table(now));
         table
     }
 
@@ -66,6 +72,63 @@ pub mod tasks_table {
 
         set_alignment(&mut table, &alignments); // 设置对齐
         table
+    }
+
+    /// 定义了TaskRow结构体，标记Task的序号，用于输出
+    ///
+    /// 为何不对Task定义Display trait，主要考虑到输出序号的完整性，
+    /// 使用id输出，在用户删改使用后，序号不连续，比较丑陋
+    struct TaskRow<'a> {
+        pub task: &'a Task, // 需要保证TaskRow的生命周期与Task相同
+        pub no: usize,
+    }
+
+    impl TaskRow<'_> {
+        /// 输出符合cli_print.rs中转换为表格所需要的数据格式
+        ///
+        /// 逻辑：
+        /// 1. 使用✓符号标记是否完成
+        /// 2. 标记是否有deadline，description
+        /// 3. 检查是否已经过了截止日期，若过期且未完成，添加感叹号标记，并标黄
+        /// 4. 整理需要打印的行，转换为`Vec<Cell>`供排版打印
+        pub fn to_table(&self, now: DateTime<Utc>) -> Vec<Cell> {
+            let task = self.task;
+            let status: &str = if task.is_complete() { "✓" } else { " " };
+            let overdue = task.is_overdue(now);
+            let deadline = match task.deadline() {
+                None => String::from("No"),
+                Some(t) if overdue => format!("{} !", to_local_time(&t)),
+                Some(t) => to_local_time(&t).to_string(),
+            };
+            let more = if task.description().is_some() {
+                String::from("Show desc")
+            } else {
+                String::new()
+            };
+
+            [
+                status.to_string(),
+                self.no.to_string(),
+                task.priority().to_string(),
+                deadline,
+                task.content().to_string(),
+                more,
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(col, text)| {
+                if overdue && col == DEADLINE_COL {
+                    Cell::new(text).fg(Color::Rgb {
+                        r: 245,
+                        g: 210,
+                        b: 45,
+                    })
+                } else {
+                    Cell::new(text)
+                }
+            })
+            .collect()
+        }
     }
 }
 

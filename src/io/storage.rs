@@ -560,7 +560,7 @@ mod tests {
 
             for task in load.iter().take(5) {
                 assert_eq!(task.id(), 1);
-                assert_eq!(task._content(), "test_task1".to_string());
+                assert_eq!(task.content(), "test_task1".to_string());
                 assert_eq!(task.description(), Some("desc"));
                 assert_eq!(
                     task.deadline(),
@@ -613,7 +613,7 @@ mod tests {
             .unwrap();
             let load = path.load().unwrap();
             assert_eq!(load.len(), 1);
-            assert_eq!(load[0]._content(), "test_task1".to_string());
+            assert_eq!(load[0].content(), "test_task1".to_string());
         }
 
         #[test]
@@ -718,8 +718,8 @@ mod tests {
             .unwrap();
             let load = path.load().unwrap();
             assert_eq!(load.len(), 2);
-            assert_eq!(load[0]._content(), "test_task1".to_string());
-            assert_eq!(load[1]._content(), "test_task1".to_string());
+            assert_eq!(load[0].content(), "test_task1".to_string());
+            assert_eq!(load[1].content(), "test_task1".to_string());
             let backup: Vec<Task> =
                 serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
             assert_eq!(backup, vec![set_test_task()]);
@@ -742,8 +742,8 @@ mod tests {
             .unwrap();
             let load = path.load().unwrap();
             assert_eq!(load.len(), 2);
-            assert_eq!(load[0]._content(), "test_task1".to_string());
-            assert_eq!(load[1]._content(), "test_task1".to_string());
+            assert_eq!(load[0].content(), "test_task1".to_string());
+            assert_eq!(load[1].content(), "test_task1".to_string());
             let backup: Vec<Task> =
                 serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
             assert_eq!(backup, vec![set_test_task()]);

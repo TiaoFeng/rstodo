@@ -217,6 +217,7 @@ pub struct TaskStatus {
     total: usize,
     done: usize,
     undone: usize,
+    overdue: usize,
 }
 
 impl TaskStatus {
@@ -226,14 +227,16 @@ impl TaskStatus {
     /// - total：总计任务数量
     /// - done： 完成的任务数量
     /// - undone： 未完成的任务数量
-    pub fn collect(store: &TaskStore) -> Result<Self, AppError> {
+    pub fn collect(store: &TaskStore, now: DateTime<Utc>) -> Result<Self, AppError> {
         let tasks = store.load()?;
         let total = tasks.len();
-        let done = tasks.iter().filter(|task| task.completed()).count();
+        let done = tasks.iter().filter(|task| task.is_complete()).count();
+        let overdue = tasks.iter().filter(|task| task.is_overdue(now)).count();
         Ok(TaskStatus {
             total,
             done,
             undone: total - done,
+            overdue,
         })
     }
 
@@ -245,6 +248,7 @@ impl TaskStatus {
             ("Total", self.total),
             ("Done", self.done),
             ("Undone", self.undone),
+            ("Overdue", self.overdue),
         ]
     }
 }

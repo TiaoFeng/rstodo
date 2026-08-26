@@ -6,6 +6,8 @@
 //! commands.rs中仅仅保留调用和输出代码
 use std::io::{self, BufRead, Write};
 
+use chrono::Utc;
+
 use crate::error::AppError;
 use crate::io::{
     cli_print::{
@@ -43,7 +45,7 @@ pub fn list(store: &TaskStore, sort: Option<SortBy>) -> Result<(), AppError> {
             Ok(())
         }
         Some(tasks) => {
-            println!("{}", list_table(&tasks));
+            println!("{}", list_table(&tasks, Utc::now()));
             Ok(())
         }
     }
@@ -57,7 +59,7 @@ pub fn show(no: usize, store: &TaskStore) -> Result<(), AppError> {
             Ok(())
         }
         Some(task) => {
-            println!("{}", show_table(&task, no));
+            println!("{}", show_table(&task, no, Utc::now()));
             println!("-Description-");
             match task.description() {
                 None => println!("+_+ No description"),
@@ -107,7 +109,7 @@ pub fn undo(store: &TaskStore, yes: bool) -> Result<(), AppError> {
         Err(e) => return Err(e),
     };
     println!("The list will be restored to:");
-    println!("{}", list_table(&backup_tasks));
+    println!("{}", list_table(&backup_tasks, Utc::now()));
 
     if !yes && !confirm(&mut io::stdin().lock()) {
         println!(">_< Undo cancelled.");
@@ -130,7 +132,7 @@ fn confirm(read: &mut dyn BufRead) -> bool {
 }
 
 pub fn status(store: &TaskStore) -> Result<(), AppError> {
-    let task_status = TaskStatus::collect(store)?;
+    let task_status = TaskStatus::collect(store, Utc::now())?;
     println!("{}", status_table(&task_status));
     Ok(())
 }
@@ -181,10 +183,10 @@ mod commands_test {
         let tasks = store.load().unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].id(), 1);
-        assert_eq!(tasks[0]._content(), "test_add1");
+        assert_eq!(tasks[0].content(), "test_add1");
         assert_eq!(tasks[0].description(), Some("about_assert_add_test"));
         assert_eq!(tasks[0].priority(), Priority::High);
-        assert!(!tasks[0].completed());
+        assert!(!tasks[0].is_complete());
 
         let expected = to_utc(
             &NaiveDateTime::parse_from_str("2000-01-01T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap(),
@@ -196,11 +198,11 @@ mod commands_test {
         let tasks = store.load().unwrap();
         assert_eq!(tasks.len(), 2);
         assert_eq!(tasks[1].id(), 2);
-        assert_eq!(tasks[1]._content(), "test_add2".to_string());
+        assert_eq!(tasks[1].content(), "test_add2".to_string());
         assert_eq!(tasks[1].priority(), Priority::Low);
         assert!(tasks[1].deadline().is_none());
         assert!(tasks[1].description().is_none());
-        assert!(!tasks[1].completed());
+        assert!(!tasks[1].is_complete());
         // 测试3：deadline自动补全测试
         add(
             "test_add3".to_string(),
@@ -213,10 +215,10 @@ mod commands_test {
         let tasks = store.load().unwrap();
         assert_eq!(tasks.len(), 3);
         assert_eq!(tasks[2].id(), 3);
-        assert_eq!(tasks[2]._content(), "test_add3".to_string());
+        assert_eq!(tasks[2].content(), "test_add3".to_string());
         assert_eq!(tasks[2].priority(), Priority::Low);
         assert!(tasks[2].description().is_none());
-        assert!(!tasks[2].completed());
+        assert!(!tasks[2].is_complete());
 
         let expected = to_utc(
             &NaiveDateTime::parse_from_str("2000-01-02T23:59:59", "%Y-%m-%dT%H:%M:%S").unwrap(),
@@ -266,8 +268,8 @@ mod commands_test {
         delete(2, &store).unwrap();
         let tasks = store.load().unwrap();
         assert_eq!(tasks.len(), 2);
-        assert_eq!(tasks[0]._content(), "task1".to_string());
-        assert_eq!(tasks[1]._content(), "task3".to_string());
+        assert_eq!(tasks[0].content(), "task1".to_string());
+        assert_eq!(tasks[1].content(), "task3".to_string());
 
         assert!(delete(0, &store).is_err());
         assert!(delete(99, &store).is_err());
@@ -304,7 +306,7 @@ mod commands_test {
         )
         .unwrap();
         let tasks = store.load().unwrap();
-        assert_eq!(tasks[0]._content(), "change_task2".to_string());
+        assert_eq!(tasks[0].content(), "change_task2".to_string());
         assert_eq!(tasks[0].description(), Some("new_desc2"));
 
         // 测试2：清空desc
@@ -389,9 +391,9 @@ mod commands_test {
         assert!(done(99, &store).is_err());
 
         done(1, &store).unwrap();
-        assert!(store.load().unwrap()[0].completed());
+        assert!(store.load().unwrap()[0].is_complete());
         undone(1, &store).unwrap();
-        assert!(!store.load().unwrap()[0].completed());
+        assert!(!store.load().unwrap()[0].is_complete());
     }
 
     #[cfg(test)]
@@ -405,14 +407,14 @@ mod commands_test {
 
             set_test_task(&store);
             add("undo_test_content1".to_string(), &store, None, None, None).unwrap();
-            assert_eq!(store.load().unwrap()[3]._content(), "undo_test_content1");
-            assert_eq!(store.load_backup().unwrap()[1]._content(), "task2");
-            assert_eq!(store.load_backup().unwrap()[2]._content(), "task3");
+            assert_eq!(store.load().unwrap()[3].content(), "undo_test_content1");
+            assert_eq!(store.load_backup().unwrap()[1].content(), "task2");
+            assert_eq!(store.load_backup().unwrap()[2].content(), "task3");
             assert_eq!(store.load_backup().unwrap().len(), 3);
 
             undo(&store, true).unwrap();
-            assert_eq!(store.load().unwrap()[1]._content(), "task2");
-            assert_eq!(store.load().unwrap()[2]._content(), "task3");
+            assert_eq!(store.load().unwrap()[1].content(), "task2");
+            assert_eq!(store.load().unwrap()[2].content(), "task3");
             assert_eq!(store.load().unwrap().len(), 3);
         }
 
@@ -423,16 +425,16 @@ mod commands_test {
 
             set_test_task(&store);
             add("undo_test_content1".to_string(), &store, None, None, None).unwrap();
-            assert_eq!(store.load().unwrap()[3]._content(), "undo_test_content1");
-            assert_eq!(store.load_backup().unwrap()[1]._content(), "task2");
-            assert_eq!(store.load_backup().unwrap()[2]._content(), "task3");
+            assert_eq!(store.load().unwrap()[3].content(), "undo_test_content1");
+            assert_eq!(store.load_backup().unwrap()[1].content(), "task2");
+            assert_eq!(store.load_backup().unwrap()[2].content(), "task3");
             assert_eq!(store.load_backup().unwrap().len(), 3);
 
             list(&store, Some(SortBy::Deadline)).unwrap();
             list(&store, Some(SortBy::Priority)).unwrap();
             undo(&store, true).unwrap();
-            assert_eq!(store.load().unwrap()[1]._content(), "task2");
-            assert_eq!(store.load().unwrap()[2]._content(), "task3");
+            assert_eq!(store.load().unwrap()[1].content(), "task2");
+            assert_eq!(store.load().unwrap()[2].content(), "task3");
             assert_eq!(store.load().unwrap().len(), 3);
         }
     }
@@ -448,8 +450,11 @@ mod commands_test {
             set_test_task(&store);
             assert!(done(1, &store).is_ok());
 
-            let count = TaskStatus::collect(&store).unwrap();
-            assert_eq!(count.rows(), vec![("Total", 3), ("Done", 1), ("Undone", 2)]);
+            let count = TaskStatus::collect(&store, Utc::now()).unwrap();
+            assert_eq!(
+                count.rows(),
+                vec![("Total", 3), ("Done", 1), ("Undone", 2), ("Overdue", 1)]
+            );
         }
 
         #[test]

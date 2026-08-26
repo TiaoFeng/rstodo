@@ -3,7 +3,6 @@
 //! 定义Task类型结构体与相关的方法
 use std::fmt;
 
-use crate::time::to_local_time;
 use chrono::{DateTime, Utc};
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
@@ -71,8 +70,8 @@ impl Task {
         self.id
     }
 
-    /// 返回Task的content,暂时还未使用
-    pub fn _content(&self) -> &str {
+    /// 返回Task的content
+    pub fn content(&self) -> &str {
         &self.content
     }
 
@@ -82,8 +81,21 @@ impl Task {
     }
 
     /// 返回Task是否完成
-    pub fn completed(&self) -> bool {
+    pub fn is_complete(&self) -> bool {
         self.completed
+    }
+
+    /// 返回Task是否已经逾期
+    pub fn is_overdue(&self, now: DateTime<Utc>) -> bool {
+        if !self.completed {
+            match self.deadline {
+                Some(d) if d < now => {
+                    return true;
+                }
+                _ => (),
+            }
+        }
+        false
     }
 
     /// 返回Task的deadline，可以为None
@@ -127,52 +139,17 @@ impl Task {
     }
 }
 
-/// 定义了TaskRow结构体，标记Task的序号，用于输出
-///
-/// 为何不对Task定义Display trait，主要考虑到输出序号的完整性，
-/// 使用id输出，在用户删改使用后，序号不连续，比较丑陋
-pub struct TaskRow<'a> {
-    pub task: &'a Task, // 需要保证TaskRow的生命周期与Task相同
-    pub no: usize,
-}
-
-impl TaskRow<'_> {
-    /// 输出符合cli_print.rs中转换为表格所需要的数据格式
-    ///
-    /// 逻辑：
-    /// 1. 使用✓符号标记是否完成
-    /// 2. 标记是否有deadline，description
-    /// 3. 整理需要打印的列表，转换为`Vec<String>`供排版打印
-    pub fn to_table(&self) -> Vec<String> {
-        let task = self.task;
-        let status: &str = if task.completed { "✓" } else { " " };
-        let deadline = match task.deadline {
-            None => String::from("No"),
-            Some(t) => to_local_time(&t).to_string(),
-        };
-        let more = if task.description.is_some() {
-            String::from("Show desc")
-        } else {
-            String::new()
-        };
-        vec![
-            status.to_string(),
-            self.no.to_string(),
-            task.priority.to_string(),
-            deadline,
-            task.content.clone(),
-            more,
-        ]
-    }
-}
-
 /// 单元测试
 #[cfg(test)]
 mod task_test {
+    use std::ops::Add;
+
+    use chrono::Days;
+
     use super::*;
 
     #[test]
-    fn test_task() {
+    fn test_task_new() {
         let id: usize = 1001;
         let content: String = String::from("test_content1");
         let deadline1: DateTime<Utc> = "2000-01-01T12:00:00+00:00".parse().unwrap();
@@ -181,24 +158,24 @@ mod task_test {
         let mut task: Task = Task::new(id, content, description, Some(deadline1), priority);
 
         assert_eq!(task.id(), 1001);
-        assert_eq!(task._content(), "test_content1".to_string());
+        assert_eq!(task.content(), "test_content1".to_string());
         assert_eq!(task.description(), Some("test_description1"));
         assert_eq!(task.priority(), Priority::Low);
-        assert!(!task.completed());
+        assert!(!task.is_complete());
 
         let expected = "2000-01-01T12:00:00+00:00".parse().unwrap();
         assert_eq!(task.deadline(), Some(expected));
 
         task.set_content("test_content2".to_string());
-        assert_eq!(task._content(), "test_content2".to_string());
+        assert_eq!(task.content(), "test_content2".to_string());
         task.set_description(Some("test_description2".to_string()));
         assert_eq!(task.description(), Some("test_description2"));
         task.set_description(None);
         assert!(task.description().is_none());
         task.complete();
-        assert!(task.completed());
+        assert!(task.is_complete());
         task.incomplete();
-        assert!(!task.completed());
+        assert!(!task.is_complete());
         task.set_priority(Priority::High);
         assert_eq!(task.priority(), Priority::High);
 
@@ -208,5 +185,28 @@ mod task_test {
         assert_eq!(task.deadline(), Some(expected));
         task.set_deadline(None);
         assert!(task.deadline().is_none());
+    }
+
+    #[test]
+    fn test_task_is_overdue() {
+        let id: usize = 1001;
+        let content: String = String::from("test_content1");
+        let deadline1: DateTime<Utc> = "2000-01-01T12:00:00+00:00".parse().unwrap();
+        let description = Some(String::from("test_description1"));
+        let priority = Priority::default();
+        let mut task: Task = Task::new(id, content, description, Some(deadline1), priority);
+        assert!(task.is_overdue(Utc::now()));
+
+        task.complete();
+        assert!(!task.is_overdue(Utc::now()));
+
+        task.incomplete();
+        assert!(task.is_overdue(Utc::now()));
+        task.set_deadline(None);
+        assert!(!task.is_overdue(Utc::now()));
+
+        let deadline2: DateTime<Utc> = Utc::now().add(Days::new(1));
+        task.set_deadline(Some(deadline2));
+        assert!(!task.is_overdue(Utc::now()));
     }
 }
