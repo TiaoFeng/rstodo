@@ -17,7 +17,8 @@ use std::error::Error;
 use crate::task::Priority;
 use crate::todo::SortBy;
 
-/// 定义CLI结构体，包含全局参数file用于指定自定义地址
+/// Welcome to rstodo.
+/// Please enter a command to create or manage your tasks.
 #[derive(Parser)]
 struct Cli {
     #[arg(long, global = true)]
