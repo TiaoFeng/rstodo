@@ -536,6 +536,24 @@ mod tests_error {
         assert_eq!(out.status.code(), Some(1));
         let err = err_tostring(&out);
         assert!(err.contains("Task not found"));
+
+        // 没有序号输入done
+        let out = run(&["done"], &guard.main_path());
+        let err = err_tostring(&out);
+        println!("{}", err);
+        assert!(err.contains("<NOS>"));
+
+        // 没有序号输入undone
+        let out = run(&["undone"], &guard.main_path());
+        let err = err_tostring(&out);
+        println!("{}", err);
+        assert!(err.contains("<NOS>"));
+
+        // 没有序号输入delete
+        let out = run(&["delete"], &guard.main_path());
+        let err = err_tostring(&out);
+        println!("{}", err);
+        assert!(err.contains("<NOS>"));
     }
 
     /// undo部分错误（其实只是提示）测试

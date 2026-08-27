@@ -58,9 +58,11 @@ enum Commands {
     },
     Status,
     Done {
+        #[arg(required = true)]
         nos: Vec<usize>,
     },
     Undone {
+        #[arg(required = true)]
         nos: Vec<usize>,
     },
     Undo {
@@ -68,6 +70,7 @@ enum Commands {
         yes: bool,
     },
     Delete {
+        #[arg(required = true)]
         nos: Vec<usize>,
     },
 }
