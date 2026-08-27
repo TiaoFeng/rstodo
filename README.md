@@ -34,62 +34,62 @@ $ cargo run -- add "修改代码" -d 2000-1-1
 $ cargo run -- add "提交commit" -d 2000-1-2 -D "修复潜在的bug"
 $ cargo run -- add "审查代码" -d 2000-1-2T12:30:00 -p high
 $ cargo run -- list
-```
+
 | status | no | priority |        deadline       |    task    |    more   |
 |--------|----|----------|-----------------------|------------|-----------|
 |        | 1  |    Low   |           No          | 提交issue  |           |
 |        | 2  |    Low   | 2000-01-01 23:59:59 ! | 修改代码   |           |
 |        | 3  |    Low   | 2000-01-02 23:59:59 ! | 提交commit | Show desc |
 |        | 4  |   High   | 2000-01-02 12:30:00 ! | 审查代码   |           |
-```
+
 $ cargo run -- done 1 3
 $ cargo run -- list
-```
+
 | status | no | priority |        deadline       |    task    |    more   |
 |--------|----|----------|-----------------------|------------|-----------|
 |    ✓   | 1  |    Low   |           No          | 提交issue  |           |
 |        | 2  |    Low   | 2000-01-01 23:59:59 ! | 修改代码   |           |
 |    ✓   | 3  |    Low   |  2000-01-02 23:59:59  | 提交commit | Show desc |
 |        | 4  |   High   | 2000-01-02 12:30:00 ! | 审查代码   |           |
-```
+
 $ cargo run -- show 3
-```
+
 | status | no | priority |       deadline      |    task    |    more   |
 |--------|----|----------|---------------------|------------|-----------|
 |    ✓   | 3  |    Low   | 2000-01-02 23:59:59 | 提交commit | Show desc |
 -Description-
 修复潜在的bug
-```
+
 $ cargo run -- change 2 -c "修复bug" -d 2000-1-1T12:00:00 -p medium
 $ cargo run -- list
-```
+
 | status | no | priority |        deadline       |    task    |    more   |
 |--------|----|----------|-----------------------|------------|-----------|
 |    ✓   | 1  |    Low   |           No          | 提交issue  |           |
 |        | 2  |  Medium  | 2000-01-01 12:00:00 ! | 修复bug    |           |
 |    ✓   | 3  |    Low   |  2000-01-02 23:59:59  | 提交commit | Show desc |
 |        | 4  |   High   | 2000-01-02 12:30:00 ! | 审查代码   |           |
-```
+
 $ cargo run -- list p
-```
+
 | status | no | priority |        deadline       |    task    |    more   |
 |--------|----|----------|-----------------------|------------|-----------|
 |        | 1  |   High   | 2000-01-02 12:30:00 ! | 审查代码   |           |
 |        | 2  |  Medium  | 2000-01-01 12:00:00 ! | 修复bug    |           |
 |    ✓   | 3  |    Low   |           No          | 提交issue  |           |
 |    ✓   | 4  |    Low   |  2000-01-02 23:59:59  | 提交commit | Show desc |
-```
+
 $ cargo run -- list d
-```
+
 | status | no | priority |        deadline       |    task    |    more   |
 |--------|----|----------|-----------------------|------------|-----------|
 |        | 1  |  Medium  | 2000-01-01 12:00:00 ! | 修复bug    |           |
 |        | 2  |   High   | 2000-01-02 12:30:00 ! | 审查代码   |           |
 |    ✓   | 3  |    Low   |  2000-01-02 23:59:59  | 提交commit | Show desc |
 |    ✓   | 4  |    Low   |           No          | 提交issue  |           |
-```
+
 $ cargo run -- status
-```
+
 ─────────────────
   Items    Count 
 ═════════════════
@@ -101,20 +101,20 @@ $ cargo run -- status
 ─────────────────
  Overdue     2   
 ─────────────────
-```
+
 $ cargo run -- delete 1 2
 $ cargo run -- list
-```
+
 | status | no | priority |       deadline      |    task    |    more   |
 |--------|----|----------|---------------------|------------|-----------|
 |    ✓   | 1  |    Low   | 2000-01-02 23:59:59 | 提交commit | Show desc |
 |    ✓   | 2  |    Low   |          No         | 提交issue  |           |
-```
+
 $ cargo run -- delete --alldone -y
 $ cargo run -- list
-```
-+_+ No tasks
 
++_+ No tasks
+```
 
 ## 命令说明
 ### 全局命令
