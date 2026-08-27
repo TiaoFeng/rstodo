@@ -192,36 +192,52 @@ pub fn show_details(no: usize, store: &TaskStore) -> Result<Option<Task>, AppErr
     }
 }
 
-pub fn complete_task(no: usize, store: &TaskStore) -> Result<(), AppError> {
+pub fn complete_task(mut nos: Vec<usize>, store: &TaskStore) -> Result<(), AppError> {
     store.update_with_backup(|tasks| {
-        if no == 0 || no > tasks.len() {
-            Err(AppError::TaskNotFound { no })
-        } else {
+        nos.sort_unstable();
+        nos.dedup();
+        for &no in &nos {
+            if no == 0 || no > tasks.len() {
+                return Err(AppError::TaskNotFound { no });
+            }
+        }
+        for no in nos {
             let task = tasks.get_mut(no - 1).ok_or(AppError::TaskNotFound { no })?;
             task.complete();
-            Ok(())
         }
+        Ok(())
     })
 }
 
-pub fn incomplete_task(no: usize, store: &TaskStore) -> Result<(), AppError> {
+pub fn incomplete_task(mut nos: Vec<usize>, store: &TaskStore) -> Result<(), AppError> {
     store.update_with_backup(|tasks| {
-        if no == 0 || no > tasks.len() {
-            Err(AppError::TaskNotFound { no })
-        } else {
+        nos.sort_unstable();
+        nos.dedup();
+        for &no in &nos {
+            if no == 0 || no > tasks.len() {
+                return Err(AppError::TaskNotFound { no });
+            }
+        }
+        for no in nos {
             let task = tasks.get_mut(no - 1).ok_or(AppError::TaskNotFound { no })?;
             task.incomplete();
-            Ok(())
         }
+        Ok(())
     })
 }
 
-pub fn delete_task(no: usize, store: &TaskStore) -> Result<(), AppError> {
+pub fn delete_task(mut nos: Vec<usize>, store: &TaskStore) -> Result<(), AppError> {
     store.update_with_backup(|tasks| {
-        if no == 0 || no > tasks.len() {
-            return Err(AppError::TaskNotFound { no });
+        nos.sort_unstable();
+        nos.dedup();
+        for &no in &nos {
+            if no == 0 || no > tasks.len() {
+                return Err(AppError::TaskNotFound { no });
+            }
         }
-        tasks.remove(no - 1);
+        for no in nos.into_iter().rev() {
+            tasks.remove(no - 1);
+        }
         Ok(())
     })
 }

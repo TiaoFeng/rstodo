@@ -58,17 +58,17 @@ enum Commands {
     },
     Status,
     Done {
-        no: usize,
+        nos: Vec<usize>,
     },
     Undone {
-        no: usize,
+        nos: Vec<usize>,
     },
     Undo {
         #[arg(short, long)]
         yes: bool,
     },
     Delete {
-        no: usize,
+        nos: Vec<usize>,
     },
 }
 
@@ -93,10 +93,10 @@ fn main() {
         Commands::List { sort } => commands::list(&store, sort),
         Commands::Show { no } => commands::show(no, &store),
         Commands::Status => commands::status(&store),
-        Commands::Done { no } => commands::done(no, &store),
-        Commands::Undone { no } => commands::undone(no, &store),
+        Commands::Done { nos } => commands::done(nos, &store),
+        Commands::Undone { nos } => commands::undone(nos, &store),
         Commands::Undo { yes } => commands::undo(&store, yes),
-        Commands::Delete { no } => commands::delete(no, &store),
+        Commands::Delete { nos } => commands::delete(nos, &store),
     };
     if let Err(apperr) = result {
         eprintln!("Error: {}", apperr);

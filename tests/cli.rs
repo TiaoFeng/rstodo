@@ -150,13 +150,6 @@ fn test_change_task() {
             .stderr
             .is_empty()
     );
-    assert!(run(&["done", "1"], &guard.main_path()).stderr.is_empty());
-    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
-    assert!(out_string.contains("✓"));
-
-    assert!(run(&["undone", "1"], &guard.main_path()).stderr.is_empty());
-    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
-    assert!(!out_string.contains("✓"));
 
     assert!(
         run(
@@ -168,12 +161,116 @@ fn test_change_task() {
     );
     let out_string = out_tostring(&run(&["list"], &guard.main_path()));
     assert!(out_string.contains("cli_test1_change"));
-
     assert!(out_string.contains("cli_test2"));
+
+    assert!(
+        run(
+            &["change", "2", "-d", "2000-1-1", "-p", "high"],
+            &guard.main_path()
+        )
+        .stderr
+        .is_empty()
+    );
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+    assert!(out_string.contains("2000-01-01 23:59:59"));
+    assert!(out_string.contains("High"));
+}
+
+#[test]
+fn test_done() {
+    let guard = TempGuard::new("test_done");
+    assert!(
+        run(&["add", "cli_test1"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+    assert!(
+        run(&["add", "cli_test2"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+    assert!(
+        run(&["add", "cli_test3"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+
+    assert!(run(&["done", "1"], &guard.main_path()).stderr.is_empty());
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+    assert!(out_string.contains("✓"));
+
+    assert!(run(&["undone", "1"], &guard.main_path()).stderr.is_empty());
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+    assert!(!out_string.contains("✓"));
+
+    assert!(
+        run(&["done", "1", "3"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+    assert!(out_string.contains("✓"));
+    assert!(run(&["undone", "3"], &guard.main_path()).stderr.is_empty());
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+    assert!(out_string.contains("✓"));
+    assert!(
+        run(&["undone", "1", "3", "2"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+    assert!(!out_string.contains("✓"));
+}
+
+#[test]
+fn test_delete() {
+    let guard = TempGuard::new("test_delete");
+    assert!(
+        run(&["add", "cli_test1"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+    assert!(
+        run(&["add", "cli_test2"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+
     assert!(run(&["delete", "2"], &guard.main_path()).stderr.is_empty());
     let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+    assert!(out_string.contains("cli_test1"));
     assert!(!out_string.contains("cli_test2"));
-    assert!(out_string.contains("cli_test1_change"));
+
+    assert!(
+        run(&["add", "cli_test3"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+    assert!(
+        run(&["add", "cli_test4"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+    assert!(
+        run(&["add", "cli_test5"], &guard.main_path())
+            .stderr
+            .is_empty()
+    );
+
+    assert!(
+        run(
+            &["delete", "1", "3", "1", "1", "3", "3"],
+            &guard.main_path()
+        )
+        .stderr
+        .is_empty()
+    );
+    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+    assert!(!out_string.contains("cli_test1"));
+    assert!(!out_string.contains("cli_test2"));
+    assert!(out_string.contains("cli_test3"));
+    assert!(!out_string.contains("cli_test4"));
+    assert!(out_string.contains("cli_test5"));
 }
 
 /// 测试undo功能
@@ -399,6 +496,46 @@ mod tests_error {
                 "Invalid description: '  '. The 'description' field cannot be left blank."
             )
         );
+    }
+
+    #[test]
+    fn test_done_undone_delete_multiple() {
+        let guard = TempGuard::new("test_done_undone_delete_multiple");
+
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+
+        // done输入越界的序号
+        let out = run(&["done", "1", "2", "3", "4", "5", "3"], &guard.main_path());
+        assert_eq!(out.status.code(), Some(1));
+        let err = err_tostring(&out);
+        assert!(err.contains("Task not found"));
+
+        // undone输入越界的序号
+        let out = run(
+            &["undone", "1", "2", "3", "4", "5", "3"],
+            &guard.main_path(),
+        );
+        assert_eq!(out.status.code(), Some(1));
+        let err = err_tostring(&out);
+        assert!(err.contains("Task not found"));
+
+        // delete输入越界的序号
+        let out = run(
+            &["delete", "1", "2", "3", "4", "5", "3"],
+            &guard.main_path(),
+        );
+        assert_eq!(out.status.code(), Some(1));
+        let err = err_tostring(&out);
+        assert!(err.contains("Task not found"));
     }
 
     /// undo部分错误（其实只是提示）测试
