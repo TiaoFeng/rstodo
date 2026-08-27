@@ -358,6 +358,49 @@ mod tests_error {
         assert!(fs::read_to_string(guard.main_path()).unwrap().is_empty());
     }
 
+    #[test]
+    fn test_add_change_empty() {
+        let guard = TempGuard::new("test_add_change_empty");
+
+        // 输入空的content
+        let out = run(&["add", "  "], &guard.main_path());
+        assert!(
+            err_tostring(&out)
+                .contains("Invalid content: '  '. The 'content' field cannot be left blank.")
+        );
+        // 输入空的description
+        let out = run(&["add", "test", "-D", "  "], &guard.main_path());
+        assert!(
+            err_tostring(&out).contains(
+                "Invalid description: '  '. The 'description' field cannot be left blank."
+            )
+        );
+
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        // change为空的content
+        let out = run(&["change", "1", "-c", "  "], &guard.main_path());
+        assert!(
+            err_tostring(&out)
+                .contains("Invalid content: '  '. The 'content' field cannot be left blank.")
+        );
+        // change为空的description
+        let out = run(&["change", "1", "-D", "  "], &guard.main_path());
+        assert!(
+            err_tostring(&out).contains(
+                "Invalid description: '  '. The 'description' field cannot be left blank."
+            )
+        );
+    }
+
     /// undo部分错误（其实只是提示）测试
     #[test]
     fn test_repeat_undo() {

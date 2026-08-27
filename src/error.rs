@@ -10,6 +10,12 @@ pub enum AppError {
         path: String,
         source: serde_json::Error,
     },
+    InvalidContent {
+        input: String,
+    },
+    InvalidDescription {
+        input: String,
+    },
     InvalidDeadline {
         input: String,
     },
@@ -43,10 +49,24 @@ impl fmt::Display for AppError {
             AppError::Corrupted { path, source } => {
                 write!(f, "task file '{}' is corrupted: {}", path, source)
             }
+            AppError::InvalidContent { input } => {
+                write!(
+                    f,
+                    "Invalid content: '{}'. The 'content' field cannot be left blank.",
+                    input
+                )
+            }
             AppError::InvalidDeadline { input } => {
                 write!(
                     f,
-                    "Invalid deadline format '{}', expected {{%Y-%m-%d}} or {{%Y-%m-%dT%H:%M:%S}}",
+                    "Invalid deadline format '{}', expected {{%Y-%m-%d}} or {{%Y-%m-%dT%H:%M:%S}}. Example: 2000-1-1 or 2000-1-1T12:00:00",
+                    input
+                )
+            }
+            AppError::InvalidDescription { input } => {
+                write!(
+                    f,
+                    "Invalid description: '{}'. The 'description' field cannot be left blank.",
                     input
                 )
             }
@@ -140,11 +160,27 @@ mod error_test {
         );
 
         assert_eq!(
+            AppError::InvalidContent {
+                input: "   ".to_string()
+            }
+            .to_string(),
+            "Invalid content: '   '. The 'content' field cannot be left blank."
+        );
+
+        assert_eq!(
+            AppError::InvalidDescription {
+                input: "  ".to_string()
+            }
+            .to_string(),
+            "Invalid description: '  '. The 'description' field cannot be left blank."
+        );
+
+        assert_eq!(
             AppError::InvalidDeadline {
                 input: "ab-cd-ef".to_string()
             }
             .to_string(),
-            "Invalid deadline format 'ab-cd-ef', expected {%Y-%m-%d} or {%Y-%m-%dT%H:%M:%S}"
+            "Invalid deadline format 'ab-cd-ef', expected {%Y-%m-%d} or {%Y-%m-%dT%H:%M:%S}. Example: 2000-1-1 or 2000-1-1T12:00:00"
         );
 
         assert_eq!(

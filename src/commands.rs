@@ -237,6 +237,21 @@ mod commands_test {
             .is_err()
         );
         assert_eq!(store.load().unwrap().len(), 3);
+        // 测试5：空content测试
+        assert!(add(" ".to_string(), &store, None, None, None).is_err());
+        assert_eq!(store.load().unwrap().len(), 3);
+        // 测试6： 空description测试
+        assert!(
+            add(
+                "test_add4".to_string(),
+                &store,
+                Some("     ".to_string()),
+                None,
+                None
+            )
+            .is_err()
+        );
+        assert_eq!(store.load().unwrap().len(), 3);
     }
 
     #[test]
@@ -354,6 +369,12 @@ mod commands_test {
             )
             .is_err()
         );
+        assert_eq!(store.load().unwrap(), tasks);
+        // 测试8： content为空
+        assert!(change(1, &store, Some(" ".to_string()), None, None, None).is_err());
+        assert_eq!(store.load().unwrap(), tasks);
+        // 测试9： description为空
+        assert!(change(1, &store, None, Some(Some("   ".to_string())), None, None).is_err());
         assert_eq!(store.load().unwrap(), tasks);
     }
 

@@ -56,6 +56,23 @@ impl TaskUpdate {
         if self.is_empty() {
             return Err(AppError::NothingToChange);
         }
+        // 判断希望修改的content是否为空
+        if let Some(content) = &self.content
+            && content.trim().is_empty()
+        {
+            return Err(AppError::InvalidContent {
+                input: content.clone(),
+            });
+        }
+        // 判断希望修改的description是否为空
+        if let Some(Some(desc)) = &self.description
+            && desc.trim().is_empty()
+        {
+            return Err(AppError::InvalidDescription {
+                input: desc.clone(),
+            });
+        }
+
         store.update_with_backup(|tasks| {
             if no == 0 || no > tasks.len() {
                 return Err(AppError::TaskNotFound { no });
@@ -96,6 +113,19 @@ pub fn add_task(
     deadline: Option<DateTime<Utc>>,
     priority: Option<Priority>,
 ) -> Result<(), AppError> {
+    // 判断content是否为空
+    if content.trim().is_empty() {
+        return Err(AppError::InvalidContent { input: content });
+    }
+    // 判断传入的description是否为空
+    if let Some(desc) = &description
+        && desc.trim().is_empty()
+    {
+        return Err(AppError::InvalidDescription {
+            input: desc.clone(),
+        });
+    }
+
     store.update_with_backup(|tasks: &mut Vec<Task>| {
         let new_id: usize = tasks.iter().map(|t: &Task| t.id()).max().unwrap_or(0) + 1;
         let new_task: Task = Task::new(
