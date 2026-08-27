@@ -70,8 +70,11 @@ enum Commands {
         yes: bool,
     },
     Delete {
-        #[arg(required = true)]
         nos: Vec<usize>,
+        #[arg(long)]
+        alldone: bool,
+        #[arg(short, long)]
+        yes: bool,
     },
 }
 
@@ -99,7 +102,7 @@ fn main() {
         Commands::Done { nos } => commands::done(nos, &store),
         Commands::Undone { nos } => commands::undone(nos, &store),
         Commands::Undo { yes } => commands::undo(&store, yes),
-        Commands::Delete { nos } => commands::delete(nos, &store),
+        Commands::Delete { nos, alldone, yes } => commands::delete(nos, &store, alldone, yes),
     };
     if let Err(apperr) = result {
         eprintln!("Error: {}", apperr);

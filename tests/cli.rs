@@ -222,55 +222,95 @@ fn test_done() {
     assert!(!out_string.contains("✓"));
 }
 
-#[test]
-fn test_delete() {
-    let guard = TempGuard::new("test_delete");
-    assert!(
-        run(&["add", "cli_test1"], &guard.main_path())
-            .stderr
-            .is_empty()
-    );
-    assert!(
-        run(&["add", "cli_test2"], &guard.main_path())
-            .stderr
-            .is_empty()
-    );
+#[cfg(test)]
+mod tests_delete {
+    use super::*;
 
-    assert!(run(&["delete", "2"], &guard.main_path()).stderr.is_empty());
-    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
-    assert!(out_string.contains("cli_test1"));
-    assert!(!out_string.contains("cli_test2"));
+    #[test]
+    fn test_delete() {
+        let guard = TempGuard::new("test_delete");
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
 
-    assert!(
-        run(&["add", "cli_test3"], &guard.main_path())
-            .stderr
-            .is_empty()
-    );
-    assert!(
-        run(&["add", "cli_test4"], &guard.main_path())
-            .stderr
-            .is_empty()
-    );
-    assert!(
-        run(&["add", "cli_test5"], &guard.main_path())
-            .stderr
-            .is_empty()
-    );
+        assert!(run(&["delete", "2"], &guard.main_path()).stderr.is_empty());
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(out_string.contains("cli_test1"));
+        assert!(!out_string.contains("cli_test2"));
 
-    assert!(
-        run(
-            &["delete", "1", "3", "1", "1", "3", "3"],
-            &guard.main_path()
-        )
-        .stderr
-        .is_empty()
-    );
-    let out_string = out_tostring(&run(&["list"], &guard.main_path()));
-    assert!(!out_string.contains("cli_test1"));
-    assert!(!out_string.contains("cli_test2"));
-    assert!(out_string.contains("cli_test3"));
-    assert!(!out_string.contains("cli_test4"));
-    assert!(out_string.contains("cli_test5"));
+        assert!(
+            run(&["add", "cli_test3"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test4"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test5"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+
+        assert!(
+            run(
+                &["delete", "1", "3", "1", "1", "3", "3"],
+                &guard.main_path()
+            )
+            .stderr
+            .is_empty()
+        );
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(!out_string.contains("cli_test1"));
+        assert!(!out_string.contains("cli_test2"));
+        assert!(out_string.contains("cli_test3"));
+        assert!(!out_string.contains("cli_test4"));
+        assert!(out_string.contains("cli_test5"));
+    }
+
+    #[test]
+    fn test_delete_alldone() {
+        let guard = TempGuard::new("test_delete_alldone");
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test3"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["done", "1", "3"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["delete", "--alldone", "-y"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+
+        let out_string = out_tostring(&run(&["list"], &guard.main_path()));
+        assert!(!out_string.contains("cli_test1"));
+        assert!(out_string.contains("cli_test2"));
+        assert!(!out_string.contains("cli_test3"));
+    }
 }
 
 /// 测试undo功能
@@ -540,20 +580,43 @@ mod tests_error {
         // 没有序号输入done
         let out = run(&["done"], &guard.main_path());
         let err = err_tostring(&out);
-        println!("{}", err);
         assert!(err.contains("<NOS>"));
 
         // 没有序号输入undone
         let out = run(&["undone"], &guard.main_path());
         let err = err_tostring(&out);
-        println!("{}", err);
         assert!(err.contains("<NOS>"));
+    }
 
-        // 没有序号输入delete
-        let out = run(&["delete"], &guard.main_path());
+    #[test]
+    fn test_delete_multiple_alldone() {
+        let guard = TempGuard::new("test_delete_multiple_alldone");
+        assert!(
+            run(&["add", "cli_test1"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test3"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+
+        let out = run(&["delete", "1", "2", "--alldone", "-y"], &guard.main_path());
+        assert_eq!(out.status.code(), Some(1));
         let err = err_tostring(&out);
-        println!("{}", err);
-        assert!(err.contains("<NOS>"));
+        assert!(
+            err.contains("You cannot enter both a serial number and 'alldone' at the same time.")
+        );
+
+        let out = run(&["delete", "--alldone", "-y"], &guard.main_path());
+        let out_string = out_tostring(&out);
+        assert!(out_string.contains("+_+ Nothing to delete"));
     }
 
     /// undo部分错误（其实只是提示）测试

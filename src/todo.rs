@@ -235,9 +235,37 @@ pub fn delete_task(mut nos: Vec<usize>, store: &TaskStore) -> Result<(), AppErro
                 return Err(AppError::TaskNotFound { no });
             }
         }
+        // 删除应当从反向遍历，防止顺序改变
         for no in nos.into_iter().rev() {
             tasks.remove(no - 1);
         }
+        Ok(())
+    })
+}
+
+/// 从主文件中返回所有完成项目的预览，用于预览delete alldone要删除哪些内容
+pub fn delete_alldone_preview(store: &TaskStore) -> Result<Vec<Task>, AppError> {
+    let tasks = store.load()?;
+    // 整理所有完成的tasks，就是要删除的
+    let done_tasks: Vec<Task> = tasks.into_iter().filter(|t| t.is_complete()).collect();
+    if done_tasks.is_empty() {
+        return Err(AppError::NothingToDelete);
+    }
+    Ok(done_tasks)
+}
+
+/// 执行删除所有完成项目，需要与snapshot对比，检查文件是否在预览后被篡改
+pub fn delete_alldone_apply(store: &TaskStore, snapshot: &[Task]) -> Result<(), AppError> {
+    store.update_with_backup(|tasks| {
+        let current: Vec<Task> = tasks
+            .clone()
+            .into_iter()
+            .filter(|t| t.is_complete())
+            .collect();
+        if current != snapshot {
+            return Err(AppError::DeleteConflict);
+        }
+        tasks.retain(|t| !t.is_complete());
         Ok(())
     })
 }

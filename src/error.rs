@@ -26,10 +26,13 @@ pub enum AppError {
     },
     InvalidLocalTime,
     NothingToChange,
+    NothingToDelete,
     NothingToUndo,
     TaskNotFound {
         no: usize,
     },
+    DeleteConflictOperations,
+    DeleteConflict,
     UndoConflict,
 }
 
@@ -89,6 +92,9 @@ impl fmt::Display for AppError {
             AppError::NothingToUndo => {
                 write!(f, "Nothing to undo")
             }
+            AppError::NothingToDelete => {
+                write!(f, "Nothing to delete")
+            }
             AppError::TaskNotFound { no } => {
                 write!(
                     f,
@@ -100,6 +106,18 @@ impl fmt::Display for AppError {
                 write!(
                     f,
                     "Task list changed since the undo preview, please run 'undo' again",
+                )
+            }
+            AppError::DeleteConflict => {
+                write!(
+                    f,
+                    "Task list changed since the delete preview, please run 'delete alldone' again"
+                )
+            }
+            AppError::DeleteConflictOperations => {
+                write!(
+                    f,
+                    "You cannot enter both a serial number and 'alldone' at the same time."
                 )
             }
         }
@@ -193,6 +211,8 @@ mod error_test {
             "Nothing to change, Please enter one or more subcommands"
         );
 
+        assert_eq!(AppError::NothingToDelete.to_string(), "Nothing to delete");
+
         assert_eq!(AppError::NothingToUndo.to_string(), "Nothing to undo");
 
         assert_eq!(
@@ -203,6 +223,16 @@ mod error_test {
         assert_eq!(
             AppError::UndoConflict.to_string(),
             "Task list changed since the undo preview, please run 'undo' again",
+        );
+
+        assert_eq!(
+            AppError::DeleteConflict.to_string(),
+            "Task list changed since the delete preview, please run 'delete alldone' again",
+        );
+
+        assert_eq!(
+            AppError::DeleteConflictOperations.to_string(),
+            "You cannot enter both a serial number and 'alldone' at the same time."
         )
     }
 

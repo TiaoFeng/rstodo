@@ -18,10 +18,7 @@ use crate::io::{
 };
 use crate::task::Priority;
 use crate::time::parse_deadline_input;
-use crate::todo::{
-    SortBy, TaskStatus, TaskUpdate, add_task, complete_task, delete_task, incomplete_task,
-    list_tasks, show_details, undo_task_apply, undo_task_preview,
-};
+use crate::todo::*;
 
 pub fn add(
     content: String,
@@ -78,8 +75,48 @@ pub fn undone(nos: Vec<usize>, store: &TaskStore) -> Result<(), AppError> {
     incomplete_task(nos, store)
 }
 
-pub fn delete(nos: Vec<usize>, store: &TaskStore) -> Result<(), AppError> {
-    delete_task(nos, store)
+pub fn delete(
+    nos: Vec<usize>,
+    store: &TaskStore,
+    alldone: bool,
+    yes: bool,
+) -> Result<(), AppError> {
+    // 不能没有参数
+    if nos.is_empty() && !alldone {
+        return Err(AppError::NothingToDelete);
+    }
+    // 不能同时选择删除序号和全部
+    if !nos.is_empty() && alldone {
+        return Err(AppError::DeleteConflictOperations);
+    }
+    if alldone {
+        let delete_tasks = match delete_alldone_preview(store) {
+            Ok(tasks) => tasks,
+            Err(AppError::NothingToDelete) => {
+                println!("+_+ Nothing to delete"); // 将错误降级为普通提醒，与undo一致
+                return Ok(());
+            }
+            Err(err) => return Err(err),
+        };
+        println!("The following items will be deleted:");
+        println!("{}", list_table(&delete_tasks, Utc::now())); // 复用了list_table，实际上由于都是已完成的永远不会着色
+
+        if !yes
+            && !confirm(
+                &mut io::stdin().lock(),
+                "Confirm delete all done tasks? [y/N] ",
+            )
+        {
+            println!(">_< Delete cancelled.");
+            return Ok(());
+        }
+        let count = delete_tasks.len();
+        delete_alldone_apply(store, &delete_tasks)?;
+        println!("Deleted {} done task(s) >>>", count);
+        Ok(())
+    } else {
+        delete_task(nos, store)
+    }
 }
 
 pub fn change(
@@ -111,7 +148,7 @@ pub fn undo(store: &TaskStore, yes: bool) -> Result<(), AppError> {
     println!("The list will be restored to:");
     println!("{}", list_table(&backup_tasks, Utc::now()));
 
-    if !yes && !confirm(&mut io::stdin().lock()) {
+    if !yes && !confirm(&mut io::stdin().lock(), "Confirm undo? [y/N] ") {
         println!(">_< Undo cancelled.");
         return Ok(());
     }
@@ -120,8 +157,9 @@ pub fn undo(store: &TaskStore, yes: bool) -> Result<(), AppError> {
     Ok(())
 }
 
-fn confirm(read: &mut dyn BufRead) -> bool {
-    print!("Confirm undo? [y/N] ");
+/// 二次确认函数
+fn confirm(read: &mut dyn BufRead, prompt: &str) -> bool {
+    print!("{}", prompt);
     let _ = io::stdout().flush();
     let mut input = String::new();
     match read.read_line(&mut input) {
@@ -299,17 +337,17 @@ mod commands_test {
             let guard = TempGuard::new("test_delete_sigle");
             let store = TaskStore::new(Some(guard.main_path()));
 
-            assert!(delete(vec![1], &store).is_err());
+            assert!(delete(vec![1], &store, false, false).is_err());
 
             set_test_task(&store);
-            delete(vec![2], &store).unwrap();
+            delete(vec![2], &store, false, false).unwrap();
             let tasks = store.load().unwrap();
             assert_eq!(tasks.len(), 2);
             assert_eq!(tasks[0].content(), "task1".to_string());
             assert_eq!(tasks[1].content(), "task3".to_string());
 
-            assert!(delete(vec![0], &store).is_err());
-            assert!(delete(vec![99], &store).is_err());
+            assert!(delete(vec![0], &store, false, false).is_err());
+            assert!(delete(vec![99], &store, false, false).is_err());
             assert_eq!(store.load().unwrap().len(), 2);
         }
 
@@ -319,12 +357,12 @@ mod commands_test {
             let store = TaskStore::new(Some(guard.main_path()));
 
             set_test_task(&store);
-            delete(vec![1, 2], &store).unwrap();
+            delete(vec![1, 2], &store, false, false).unwrap();
             let tasks = store.load().unwrap();
             assert_eq!(tasks.len(), 1);
             assert_eq!(tasks[0].content(), "task3".to_string());
 
-            assert!(delete(vec![1, 99, 999], &store).is_err());
+            assert!(delete(vec![1, 99, 999], &store, false, false).is_err());
         }
 
         #[test]
@@ -332,10 +370,55 @@ mod commands_test {
             let guard = TempGuard::new("test_delete_multiple_duplicate");
             let store = TaskStore::new(Some(guard.main_path()));
             set_test_task(&store);
-            delete(vec![3, 1, 1, 3, 1, 3], &store).unwrap();
+            delete(vec![3, 1, 1, 3, 1, 3], &store, false, false).unwrap();
             let tasks = store.load().unwrap();
             assert_eq!(tasks.len(), 1);
             assert_eq!(tasks[0].content(), "task2".to_string());
+        }
+
+        #[test]
+        fn test_delete_alldone() {
+            let guard = TempGuard::new("test_delete_alldone");
+            let store = TaskStore::new(Some(guard.main_path()));
+            set_test_task(&store);
+            assert!(done(vec![1, 2], &store).is_ok());
+            assert!(delete(vec![], &store, true, true).is_ok());
+            let tasks = store.load().unwrap();
+            assert_eq!(tasks.len(), 1);
+            assert_eq!(tasks[0].content(), "task3".to_string());
+        }
+
+        #[test]
+        fn test_delete_alldone_no_tasks_done() {
+            let guard = TempGuard::new("test_delete_alldone_no_tasks_done");
+            let store = TaskStore::new(Some(guard.main_path()));
+            set_test_task(&store);
+            assert!(delete(vec![], &store, true, true).is_ok());
+            let tasks = store.load().unwrap();
+            assert_eq!(tasks.len(), 3);
+            assert_eq!(tasks[0].content(), "task1".to_string());
+            assert_eq!(tasks[1].content(), "task2".to_string());
+            assert_eq!(tasks[2].content(), "task3".to_string());
+        }
+
+        #[test]
+        fn test_delete_alldone_err() {
+            let guard = TempGuard::new("test_delete_alldone_err");
+            let store = TaskStore::new(Some(guard.main_path()));
+            set_test_task(&store);
+            assert!(delete(vec![1, 2], &store, true, true).is_err());
+            let tasks = store.load().unwrap();
+            assert_eq!(tasks.len(), 3);
+            assert_eq!(tasks[0].content(), "task1".to_string());
+            assert_eq!(tasks[1].content(), "task2".to_string());
+            assert_eq!(tasks[2].content(), "task3".to_string());
+
+            assert!(delete(vec![], &store, false, true).is_err());
+            let tasks = store.load().unwrap();
+            assert_eq!(tasks.len(), 3);
+            assert_eq!(tasks[0].content(), "task1".to_string());
+            assert_eq!(tasks[1].content(), "task2".to_string());
+            assert_eq!(tasks[2].content(), "task3".to_string());
         }
     }
 
@@ -567,7 +650,7 @@ mod commands_test {
             assert!(status(&store).is_ok());
             set_test_task(&store);
             assert!(status(&store).is_ok());
-            assert!(delete(vec![1], &store).is_ok());
+            assert!(delete(vec![1], &store, false, false).is_ok());
             assert!(status(&store).is_ok());
             assert!(done(vec![1], &store).is_ok());
             assert!(status(&store).is_ok());
