@@ -11,9 +11,13 @@
 ## 特性
 
 - 支持任务的添加、修改、删除、完成/取消完成
+- 支持批量操作（删除，完成/取消完成，删除所有已完成的项目）
 - 支持设置任务优先级（High / Medium / Low）与截止时间
 - 支持按截止时间或优先级排序展示
 - 支持任务详情查看（查看描述信息）
+- 支持恢复到上一次操作
+- 支持查看任务状态统计
+- 自动标记逾期且未完成的项目
 - 基于 JSON 文件实现本地持久化
 - 终端使用类似 markdown 样式格式化输出
 
@@ -30,63 +34,87 @@ $ cargo run -- add "修改代码" -d 2000-1-1
 $ cargo run -- add "提交commit" -d 2000-1-2 -D "修复潜在的bug"
 $ cargo run -- add "审查代码" -d 2000-1-2T12:30:00 -p high
 $ cargo run -- list
-| status | no | priority |       deadline      |    task    |    more   |
-|--------|----|----------|---------------------|------------|-----------|
-|        | 1  |    Low   |          No         | 提交issue  |           |
-|        | 2  |    Low   | 2000-01-01 23:59:59 | 修改代码   |           |
-|        | 3  |    Low   | 2000-01-02 23:59:59 | 提交commit | Show desc |
-|        | 4  |   High   | 2000-01-02 12:30:00 | 审查代码   |           |
-
-$ cargo run -- done 1
+```
+| status | no | priority |        deadline       |    task    |    more   |
+|--------|----|----------|-----------------------|------------|-----------|
+|        | 1  |    Low   |           No          | 提交issue  |           |
+|        | 2  |    Low   | 2000-01-01 23:59:59 ! | 修改代码   |           |
+|        | 3  |    Low   | 2000-01-02 23:59:59 ! | 提交commit | Show desc |
+|        | 4  |   High   | 2000-01-02 12:30:00 ! | 审查代码   |           |
+```
+$ cargo run -- done 1 3
 $ cargo run -- list
-| status | no | priority |       deadline      |    task    |    more   |
-|--------|----|----------|---------------------|------------|-----------|
-|    ✓   | 1  |    Low   |          No         | 提交issue  |           |
-|        | 2  |    Low   | 2000-01-01 23:59:59 | 修改代码   |           |
-|        | 3  |    Low   | 2000-01-02 23:59:59 | 提交commit | Show desc |
-|        | 4  |   High   | 2000-01-02 12:30:00 | 审查代码   |           |
-
+```
+| status | no | priority |        deadline       |    task    |    more   |
+|--------|----|----------|-----------------------|------------|-----------|
+|    ✓   | 1  |    Low   |           No          | 提交issue  |           |
+|        | 2  |    Low   | 2000-01-01 23:59:59 ! | 修改代码   |           |
+|    ✓   | 3  |    Low   |  2000-01-02 23:59:59  | 提交commit | Show desc |
+|        | 4  |   High   | 2000-01-02 12:30:00 ! | 审查代码   |           |
+```
 $ cargo run -- show 3
+```
 | status | no | priority |       deadline      |    task    |    more   |
 |--------|----|----------|---------------------|------------|-----------|
-|        | 3  |    Low   | 2000-01-02 23:59:59 | 提交commit | Show desc |
+|    ✓   | 3  |    Low   | 2000-01-02 23:59:59 | 提交commit | Show desc |
 -Description-
 修复潜在的bug
-
+```
 $ cargo run -- change 2 -c "修复bug" -d 2000-1-1T12:00:00 -p medium
 $ cargo run -- list
-| status | no | priority |       deadline      |    task    |    more   |
-|--------|----|----------|---------------------|------------|-----------|
-|    ✓   | 1  |    Low   |          No         | 提交issue  |           |
-|        | 2  |  Medium  | 2000-01-01 12:00:00 | 修复bug    |           |
-|        | 3  |    Low   | 2000-01-02 23:59:59 | 提交commit | Show desc |
-|        | 4  |   High   | 2000-01-02 12:30:00 | 审查代码   |           |
-
-$ cargo run -- list p
-| status | no | priority |       deadline      |    task    |    more   |
-|--------|----|----------|---------------------|------------|-----------|
-|        | 1  |   High   | 2000-01-02 12:30:00 | 审查代码   |           |
-|        | 2  |  Medium  | 2000-01-01 12:00:00 | 修复bug    |           |
-|    ✓   | 3  |    Low   |          No         | 提交issue  |           |
-|        | 4  |    Low   | 2000-01-02 23:59:59 | 提交commit | Show desc |
-
-$ cargo run -- list d
-| status | no | priority |       deadline      |    task    |    more   |
-|--------|----|----------|---------------------|------------|-----------|
-|        | 1  |  Medium  | 2000-01-01 12:00:00 | 修复bug    |           |
-|        | 2  |   High   | 2000-01-02 12:30:00 | 审查代码   |           |
-|        | 3  |    Low   | 2000-01-02 23:59:59 | 提交commit | Show desc |
-|    ✓   | 4  |    Low   |          No         | 提交issue  |           |
-
-$ cargo run -- delete 1
-$ cargo run -- list
-| status | no | priority |       deadline      |    task    |    more   |
-|--------|----|----------|---------------------|------------|-----------|
-|        | 1  |   High   | 2000-01-02 12:30:00 | 审查代码   |           |
-|        | 2  |    Low   | 2000-01-02 23:59:59 | 提交commit | Show desc |
-|    ✓   | 3  |    Low   |          No         | 提交issue  |           |
-
 ```
+| status | no | priority |        deadline       |    task    |    more   |
+|--------|----|----------|-----------------------|------------|-----------|
+|    ✓   | 1  |    Low   |           No          | 提交issue  |           |
+|        | 2  |  Medium  | 2000-01-01 12:00:00 ! | 修复bug    |           |
+|    ✓   | 3  |    Low   |  2000-01-02 23:59:59  | 提交commit | Show desc |
+|        | 4  |   High   | 2000-01-02 12:30:00 ! | 审查代码   |           |
+```
+$ cargo run -- list p
+```
+| status | no | priority |        deadline       |    task    |    more   |
+|--------|----|----------|-----------------------|------------|-----------|
+|        | 1  |   High   | 2000-01-02 12:30:00 ! | 审查代码   |           |
+|        | 2  |  Medium  | 2000-01-01 12:00:00 ! | 修复bug    |           |
+|    ✓   | 3  |    Low   |           No          | 提交issue  |           |
+|    ✓   | 4  |    Low   |  2000-01-02 23:59:59  | 提交commit | Show desc |
+```
+$ cargo run -- list d
+```
+| status | no | priority |        deadline       |    task    |    more   |
+|--------|----|----------|-----------------------|------------|-----------|
+|        | 1  |  Medium  | 2000-01-01 12:00:00 ! | 修复bug    |           |
+|        | 2  |   High   | 2000-01-02 12:30:00 ! | 审查代码   |           |
+|    ✓   | 3  |    Low   |  2000-01-02 23:59:59  | 提交commit | Show desc |
+|    ✓   | 4  |    Low   |           No          | 提交issue  |           |
+```
+$ cargo run -- status
+```
+─────────────────
+  Items    Count 
+═════════════════
+  Total      4   
+─────────────────
+   Done      2   
+─────────────────
+  Undone     2   
+─────────────────
+ Overdue     2   
+─────────────────
+```
+$ cargo run -- delete 1 2
+$ cargo run -- list
+```
+| status | no | priority |       deadline      |    task    |    more   |
+|--------|----|----------|---------------------|------------|-----------|
+|    ✓   | 1  |    Low   | 2000-01-02 23:59:59 | 提交commit | Show desc |
+|    ✓   | 2  |    Low   |          No         | 提交issue  |           |
+```
+$ cargo run -- delete --alldone -y
+$ cargo run -- list
+```
++_+ No tasks
+
 
 ## 命令说明
 ### 全局命令
@@ -115,18 +143,23 @@ rstodo list --file ./test1_commands.json
 ### 子命令
 #### 1. 添加 task 项目
 ```
-rstodo add "{content}" -d {%Y-%m-%dT%h:%m:%s} -D "{description}" -p {priority}
+rstodo add "{content}" -d {%Y-%m-%dT%H:%M:%S} -D "{description}" -p {priority}
 ```
 可选参数（description，deadline）
 ```
 -D "{description}"
 -d {%Y-%m-%d}
--d {%Y-%m-%dT%h:%m:%s}
+-d {%Y-%m-%dT%H:%M:%S}
 -p {priority}    # 注释：包括high, medium, low, 可以输入数字1,2,3 默认low
+```
+示例
+```
+rstodo add "task1" -d 2000-1-1T12:00:00 -D "desc1" -p high
+rstodo add "task2" -D "desc2" -p 2
 ```
 #### 2. 修改 task 条目
 ```
-rstodo change {no} -c "{content}" -D "{description}" -d {%Y-%m-%dT%h:%m:%s} -p {priority}
+rstodo change {no} -c "{content}" -D "{description}" -d {%Y-%m-%dT%H:%M:%S} -p {priority}
 ```
 可选参数（content，description，deadline）
 ```
@@ -135,9 +168,15 @@ rstodo change {no} -c "{content}" -D "{description}" -d {%Y-%m-%dT%h:%m:%s} -p {
 -D "{description}"
 -d    # 注释：-d 代表清空deadline
 -d {%Y-%m-%d}
--d {%Y-%m-%dT%h:%m:%s}
+-d {%Y-%m-%dT%H:%M:%S}
 -p   # 注释：-p 代表清空priority, 默认为low
 -p {priority}    # 注释：包括high, medium, low, 可以输入数字1,2,3
+```
+示例
+```
+rstodo change 1 -c "change content" -d 2000-1-1 -D "change desc" -p high
+rstodo change 1 -c "change content" -d -p high
+rstodo change 1 -c "change content" -D
 ```
 #### 3. 展示 todo 清单
 ```
@@ -153,23 +192,46 @@ rstodo show {no}
 ```
 #### 5. 标记 task 完成
 ```
-rstodo done {no}
+rstodo done {nos}
+```
+示例
+```
+rstodo done 1 2 3
 ```
 #### 6. 标记 task 未完成
 ```
-rstodo undone {no}
+rstodo undone {nos}
+```
+示例
+```
+rstodo undone 1 2 3
 ```
 #### 7. 删除 task 条目
 ```
-rstodo delete {no}
+rstodo delete {nos} {--alldone [-y]}
+```
+二选一参数{nos} {--alldone [-y]}
+```
+{nos}       # 注释：删除所填序号的任务
+{--alldone} # 注释：删除所有已完成的任务
+[-y]        # 注释：确认执行而无需二次询问
+```
+示例
+```
+rstodo delete 1 2 3
+rstodo delete --alldone
 ```
 #### 8. 从上一次操作恢复
 ```
 rstodo undo [-y]
 ```
-可选参数[-y]）
+可选参数[-y]
 ```
 [-y]   # 注释：确认执行而无需二次询问
+```
+#### 9. 展示任务状态
+```
+rstodo status
 ```
 
 ## 从源代码构建
@@ -191,6 +253,7 @@ src/
 ├── task.rs           # Task 结构体与相关方法
 ├── time.rs           # 时间格式转换与时区处理
 ├── error.rs          # 项目中使用的错误类型
+├── test_helpers.rs   # 单元测试帮助函数
 └── io/
     ├── storage.rs     # Todo list 的读取与保存
     └── cli_print.rs   # 基于 comfy_table 的终端表格输出
