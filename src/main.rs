@@ -80,10 +80,16 @@ enum Commands {
     },
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum UserInterfaceTypes {
+    Cli,
+    Tui,
+}
+
 /// 程序入口
 fn main() {
     let cli = Cli::parse();
-    let store = TaskStore::new(cli.file);
+    let store = TaskStore::new(cli.file, UserInterfaceTypes::Cli);
     let result = match cli.command {
         Commands::Add {
             content,
