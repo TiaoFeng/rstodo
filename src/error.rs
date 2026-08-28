@@ -34,6 +34,7 @@ pub enum AppError {
     DeleteConflictOperations,
     DeleteConflict,
     UndoConflict,
+    Tui(std::io::Error),
 }
 
 /// 用于使用端快速的生成 `AppError::Io` 这种错误类型
@@ -42,6 +43,12 @@ pub fn io_err(operation: &'static str, path: &Path, err: std::io::Error) -> AppE
         operation,
         path: path.to_string_lossy().to_string(),
         source: err,
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(value: std::io::Error) -> Self {
+        AppError::Tui(value)
     }
 }
 
@@ -119,6 +126,9 @@ impl fmt::Display for AppError {
                     f,
                     "You cannot enter both a serial number and 'alldone' at the same time."
                 )
+            }
+            AppError::Tui(err) => {
+                write!(f, "Something wrong: {}", err)
             }
         }
     }

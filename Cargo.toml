@@ -20,6 +20,8 @@ serde_json = { version = "1"}
 chrono = { version = "0.4.45" , features = ["serde"]}
 comfy-table = "8.0.0"
 dirs = "6"
+crossterm = "0.29"
+ratatui = "0.30.2"
 
 # The profile that 'dist' will build with
 [profile.dist]

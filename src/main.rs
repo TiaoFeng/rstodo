@@ -9,11 +9,13 @@ mod task;
 mod test_helpers;
 mod time;
 mod todo;
+mod tui;
 
 use clap::{Parser, Subcommand};
 use io::storage::TaskStore;
 use std::error::Error;
 
+use crate::error::AppError;
 use crate::task::Priority;
 use crate::todo::SortBy;
 
@@ -24,7 +26,7 @@ struct Cli {
     #[arg(long, global = true)]
     file: Option<String>,
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 /// 子命令结构体
@@ -89,28 +91,37 @@ pub enum UserInterfaceTypes {
 /// 程序入口
 fn main() {
     let cli = Cli::parse();
-    let store = TaskStore::new(cli.file, UserInterfaceTypes::Cli);
-    let result = match cli.command {
-        Commands::Add {
-            content,
-            description,
-            deadline,
-            priority,
-        } => commands::add(content, &store, description, deadline, priority),
-        Commands::Change {
-            no,
-            content,
-            description,
-            deadline,
-            priority,
-        } => commands::change(no, &store, content, description, deadline, priority),
-        Commands::List { sort, find } => commands::list(&store, sort, find),
-        Commands::Show { no } => commands::show(no, &store),
-        Commands::Status => commands::status(&store),
-        Commands::Done { nos } => commands::done(nos, &store),
-        Commands::Undone { nos } => commands::undone(nos, &store),
-        Commands::Undo { yes } => commands::undo(&store, yes),
-        Commands::Delete { nos, alldone, yes } => commands::delete(nos, &store, alldone, yes),
+    let ui_type = if cli.command.is_some() {
+        UserInterfaceTypes::Cli
+    } else {
+        UserInterfaceTypes::Tui
+    };
+    let store = TaskStore::new(cli.file, ui_type);
+    let result: Result<(), AppError> = if let Some(cmd) = cli.command {
+        match cmd {
+            Commands::Add {
+                content,
+                description,
+                deadline,
+                priority,
+            } => commands::add(content, &store, description, deadline, priority),
+            Commands::Change {
+                no,
+                content,
+                description,
+                deadline,
+                priority,
+            } => commands::change(no, &store, content, description, deadline, priority),
+            Commands::List { sort, find } => commands::list(&store, sort, find),
+            Commands::Show { no } => commands::show(no, &store),
+            Commands::Status => commands::status(&store),
+            Commands::Done { nos } => commands::done(nos, &store),
+            Commands::Undone { nos } => commands::undone(nos, &store),
+            Commands::Undo { yes } => commands::undo(&store, yes),
+            Commands::Delete { nos, alldone, yes } => commands::delete(nos, &store, alldone, yes),
+        }
+    } else {
+        tui::run::run(&store)
     };
     if let Err(apperr) = result {
         eprintln!("Error: {}", apperr);
