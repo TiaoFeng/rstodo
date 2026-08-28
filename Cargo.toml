@@ -1,5 +1,5 @@
 [package]
-name = "rstodo"
+name = "rstodo-TiaoFeng"
 version = "0.5.1"
 edition = "2024"
 rust-version = "1.89.0"
