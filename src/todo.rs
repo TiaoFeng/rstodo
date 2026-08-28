@@ -58,27 +58,19 @@ impl TaskUpdate {
             return Err(AppError::NothingToChange);
         }
         // 判断希望修改的content是否为空
-        if let Some(content) = &self.content
-            && content.trim().is_empty()
-        {
-            return Err(AppError::InvalidContent {
-                input: content.clone(),
-            });
+        if let Some(content) = &self.content {
+            validate_content(content)?;
         }
         // 判断希望修改的description是否为空
-        if let Some(Some(desc)) = &self.description
-            && desc.trim().is_empty()
-        {
-            return Err(AppError::InvalidDescription {
-                input: desc.clone(),
-            });
+        if let Some(description) = &self.description {
+            validate_desc(description)?;
         }
 
         store.update_with_backup(|tasks| {
             if no == 0 || no > tasks.len() {
                 return Err(AppError::TaskNotFound { no });
             }
-            let task = tasks.get_mut(no - 1).ok_or(AppError::TaskNotFound { no })?;
+            let task = &mut tasks[no - 1];
 
             if let Some(c) = self.content {
                 task.set_content(c);
@@ -107,18 +99,18 @@ impl TaskUpdate {
     }
 }
 
-pub fn add_task(
-    store: &TaskStore,
-    content: String,
-    description: Option<String>,
-    deadline: Option<DateTime<Utc>>,
-    priority: Option<Priority>,
-) -> Result<(), AppError> {
-    // 判断content是否为空
+/// 判断content是否为空
+fn validate_content(content: &str) -> Result<(), AppError> {
     if content.trim().is_empty() {
-        return Err(AppError::InvalidContent { input: content });
+        return Err(AppError::InvalidContent {
+            input: content.to_string(),
+        });
     }
-    // 判断传入的description是否为空
+    Ok(())
+}
+
+/// 判断传入的description是否为空
+fn validate_desc(description: &Option<String>) -> Result<(), AppError> {
     if let Some(desc) = &description
         && desc.trim().is_empty()
     {
@@ -126,9 +118,21 @@ pub fn add_task(
             input: desc.clone(),
         });
     }
+    Ok(())
+}
 
-    store.update_with_backup(|tasks: &mut Vec<Task>| {
-        let new_id: usize = tasks.iter().map(|t: &Task| t.id()).max().unwrap_or(0) + 1;
+pub fn add_task(
+    store: &TaskStore,
+    content: String,
+    description: Option<String>,
+    deadline: Option<DateTime<Utc>>,
+    priority: Option<Priority>,
+) -> Result<(), AppError> {
+    validate_content(&content)?;
+    validate_desc(&description)?;
+
+    store.update_with_backup(|tasks| {
+        let new_id: usize = tasks.iter().map(|t| t.id()).max().unwrap_or(0) + 1;
         let new_task: Task = Task::new(
             new_id,
             content,
@@ -255,15 +259,18 @@ pub fn show_details(no: usize, store: &TaskStore) -> Result<Option<Task>, AppErr
     } else if no == 0 || no > tasks.len() {
         Err(AppError::TaskNotFound { no })
     } else {
-        let task: Task = tasks
-            .get(no - 1)
-            .cloned()
-            .ok_or(AppError::TaskNotFound { no })?;
+        let task: Task = tasks[no - 1].clone(); // 上方判定过 no 一定大于0且小于列表长度,不会下溢或越界
         Ok(Some(task))
     }
 }
 
-pub fn complete_task(mut nos: Vec<usize>, store: &TaskStore) -> Result<(), AppError> {
+/// 为complete， incomplete和delete实现统一的函数
+///
+/// 这三者的代码高度相似，利用闭包减少代码重复
+fn update_task<F>(mut nos: Vec<usize>, store: &TaskStore, mut action: F) -> Result<(), AppError>
+where
+    F: FnMut(usize, &mut Vec<Task>),
+{
     store.update_with_backup(|tasks| {
         nos.sort_unstable();
         nos.dedup();
@@ -272,45 +279,25 @@ pub fn complete_task(mut nos: Vec<usize>, store: &TaskStore) -> Result<(), AppEr
                 return Err(AppError::TaskNotFound { no });
             }
         }
-        for no in nos {
-            let task = tasks.get_mut(no - 1).ok_or(AppError::TaskNotFound { no })?;
-            task.complete();
-        }
-        Ok(())
-    })
-}
-
-pub fn incomplete_task(mut nos: Vec<usize>, store: &TaskStore) -> Result<(), AppError> {
-    store.update_with_backup(|tasks| {
-        nos.sort_unstable();
-        nos.dedup();
-        for &no in &nos {
-            if no == 0 || no > tasks.len() {
-                return Err(AppError::TaskNotFound { no });
-            }
-        }
-        for no in nos {
-            let task = tasks.get_mut(no - 1).ok_or(AppError::TaskNotFound { no })?;
-            task.incomplete();
-        }
-        Ok(())
-    })
-}
-
-pub fn delete_task(mut nos: Vec<usize>, store: &TaskStore) -> Result<(), AppError> {
-    store.update_with_backup(|tasks| {
-        nos.sort_unstable();
-        nos.dedup();
-        for &no in &nos {
-            if no == 0 || no > tasks.len() {
-                return Err(AppError::TaskNotFound { no });
-            }
-        }
-        // 删除应当从反向遍历，防止顺序改变
+        // 删除应当从反向遍历，防止顺序改变，全部从反向也没有后果
         for no in nos.into_iter().rev() {
-            tasks.remove(no - 1);
+            action(no, tasks);
         }
         Ok(())
+    })
+}
+
+pub fn complete_task(nos: Vec<usize>, store: &TaskStore) -> Result<(), AppError> {
+    update_task(nos, store, |no, tasks| tasks[no - 1].complete())
+}
+
+pub fn incomplete_task(nos: Vec<usize>, store: &TaskStore) -> Result<(), AppError> {
+    update_task(nos, store, |no, tasks| tasks[no - 1].incomplete())
+}
+
+pub fn delete_task(nos: Vec<usize>, store: &TaskStore) -> Result<(), AppError> {
+    update_task(nos, store, |no, tasks| {
+        tasks.remove(no - 1);
     })
 }
 
@@ -328,11 +315,7 @@ pub fn delete_alldone_preview(store: &TaskStore) -> Result<Vec<Task>, AppError> 
 /// 执行删除所有完成项目，需要与snapshot对比，检查文件是否在预览后被篡改
 pub fn delete_alldone_apply(store: &TaskStore, snapshot: &[Task]) -> Result<(), AppError> {
     store.update_with_backup(|tasks| {
-        let current: Vec<Task> = tasks
-            .clone()
-            .into_iter()
-            .filter(|t| t.is_complete())
-            .collect();
+        let current: Vec<Task> = tasks.iter().filter(|t| t.is_complete()).cloned().collect();
         if current != snapshot {
             return Err(AppError::DeleteConflict);
         }
@@ -372,6 +355,7 @@ impl TaskStatus {
     /// - total：总计任务数量
     /// - done： 完成的任务数量
     /// - undone： 未完成的任务数量
+    /// - overdue: 逾期的任务数量
     pub fn collect(store: &TaskStore, now: DateTime<Utc>) -> Result<Self, AppError> {
         let tasks = store.load()?;
         let total = tasks.len();

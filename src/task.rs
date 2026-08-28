@@ -87,15 +87,7 @@ impl Task {
 
     /// 返回Task是否已经逾期
     pub fn is_overdue(&self, now: DateTime<Utc>) -> bool {
-        if !self.completed {
-            match self.deadline {
-                Some(d) if d < now => {
-                    return true;
-                }
-                _ => (),
-            }
-        }
-        false
+        !self.completed && self.deadline.is_some_and(|d| d < now)
     }
 
     /// 返回Task的deadline，可以为None
