@@ -18,6 +18,7 @@
 - 支持恢复到上一次操作
 - 支持查看任务状态统计
 - 自动标记逾期且未完成的项目
+- 支持根据任务内容，日期，优先级，是否完成，是否逾期查找并筛选任务
 - 基于 JSON 文件实现本地持久化
 - 终端使用类似 markdown 样式格式化输出
 
@@ -180,11 +181,24 @@ rstodo change 1 -c "change content" -D
 ```
 #### 3. 展示 todo 清单
 ```
-rstodo list {SortBy}
+rstodo list {SortBy} {-f [keyword]}
 ```
-可选参数（SortBy）
+可选参数（SortBy, -f [keyword]）
 ```
-{SortBy}    # 注释：SortBy包括"d"（按deadline排序），"p"（按priority排序）
+{SortBy}      # 注释：SortBy包括"d"（按deadline排序），"p"（按priority排序）
+-f [keyword]  # 注释：搜索并筛选
+              # 关键词包括：done（已完成）， undone或todo（未完成），
+              # overdue（已逾期）， 其他在任务中出现的字段
+```
+示例
+```
+rstodo list p          # 按照优先级排序
+rstodo list d          # 按照截止日期排序
+rstodo list -f done    # 搜索并筛选所有完成的任务
+rstodo list -f example_content  # 搜索并筛选，内容、描述等出现过这个关键词的任务
+rstodo list -f 2000    # 搜索并筛选2000年的任务
+rstodo list -f 01-01   # 搜索并筛选1月1日的任务
+rstodo list p -f todo  # 筛选的同时对筛选的结果按照优先级排序
 ```
 #### 4. 详细展示条目
 ```

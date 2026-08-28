@@ -17,6 +17,7 @@ A command-line to-do tool written in Rust. It supports adding, deleting, editing
 - Supports reverting to the previous action
 - Supports viewing task status statistics
 - Automatically flags overdue and uncompleted items
+- Supports searching and filtering tasks by task content, date, priority, completion status, and whether they are overdue
 - Implements local persistence using JSON files
 - Outputs formatted text in a Markdown-like style in the terminal
 
@@ -177,11 +178,25 @@ rstodo change 1 -c "change content" -D
 ```
 #### 3. Display task list
 ```
-rstodo list {SortBy}
+rstodo list {SortBy} {-f [keyword]}
 ```
-Optional Parameters（SortBy）
+Optional Parameters（SortBy, -f [keyword]）
 ```
 {SortBy}    # Note: SortBy includes “d” (sort by deadline) and “p” (sort by priority).
+-f [keyword]  # Note: Search and filter
+              # Keywords include: done (completed), undone or todo (unfinished),
+              # overdue (overdue), other fields that appear in the task
+```
+Example
+```
+rstodo list p          # Sort by priority
+rstodo list d          # Sort by Due Date
+rstodo list -f done    # Search and filter all completed tasks
+rstodo list -f example_content  # Search and filter for tasks
+                                # where this keyword appears in the content, description, etc.
+rstodo list -f 2000    # Search for and filter tasks from the year 2000
+rstodo list -f 01-01   # Search for and filter tasks from January 1
+rstodo list p -f todo  # While filtering, sort the results by priority.
 ```
 #### 4. View task details
 ```
