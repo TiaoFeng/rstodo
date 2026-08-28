@@ -2,7 +2,7 @@
 
 **简体中文** | [English](README.en.md)
 
-[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rust-todo-cli)](https://github.com/TiaoFeng/rust-todo-cli/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rstodo)](https://github.com/TiaoFeng/rstodo/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
 
@@ -25,7 +25,7 @@
 ## 安装
 
 下载预编译的最新版本：
-[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rust-todo-cli)](https://github.com/TiaoFeng/rust-todo-cli/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rstodo)](https://github.com/TiaoFeng/rstodo/releases/latest)
 或从源码构建（见下方「构建」章节）。
 
 ## 快速开始（示例）
@@ -252,8 +252,8 @@ rstodo status
 Rust ≥ 1.89.0
 
 ```bash
-git clone https://github.com/TiaoFeng/rust-todo-cli.git
-cd rust-todo-cli
+git clone https://github.com/TiaoFeng/rstodo.git
+cd rstodo
 cargo build --release
 ```
 
