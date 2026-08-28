@@ -12,7 +12,7 @@ use crate::error::AppError;
 use crate::io::{
     cli_print::{
         tasks_status_table::status_table,
-        tasks_table::{list_table, show_table, with_display_no},
+        tasks_table::{list_table, show_table},
     },
     storage::TaskStore,
 };
@@ -39,13 +39,12 @@ pub fn list(store: &TaskStore, sort: Option<SortBy>, find: Option<String>) -> Re
     match tasks_list {
         None => {
             println!("+_+ No tasks");
-            Ok(())
         }
         Some(tasks) => {
             println!("{}", list_table(&tasks, Utc::now()));
-            Ok(())
         }
     }
+    Ok(())
 }
 
 pub fn show(no: usize, store: &TaskStore) -> Result<(), AppError> {

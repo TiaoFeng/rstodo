@@ -64,6 +64,11 @@ impl TaskStore {
         &self.backup
     }
 
+    /// 返回用户交互界面类型
+    pub fn interface_type(&self) -> UserInterfaceTypes {
+        self.types
+    }
+
     /// Tasks只读方法
     /// 逻辑：
     /// 1.若主文件正常，只读主文件

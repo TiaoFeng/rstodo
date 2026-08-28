@@ -7,6 +7,7 @@ use std::cmp::Ordering;
 use chrono::{DateTime, Utc};
 use clap::ValueEnum;
 
+use crate::UserInterfaceTypes;
 use crate::error::AppError;
 use crate::io::storage::TaskStore;
 use crate::task::{Priority, Task};
@@ -63,7 +64,7 @@ impl TaskUpdate {
         }
         // 判断希望修改的description是否为空
         if let Some(description) = &self.description {
-            validate_desc(description)?;
+            validate_desc(description.as_deref())?;
         }
 
         store.update_with_backup(|tasks| {
@@ -110,12 +111,12 @@ fn validate_content(content: &str) -> Result<(), AppError> {
 }
 
 /// 判断传入的description是否为空
-fn validate_desc(description: &Option<String>) -> Result<(), AppError> {
-    if let Some(desc) = &description
+fn validate_desc(description: Option<&str>) -> Result<(), AppError> {
+    if let Some(desc) = description
         && desc.trim().is_empty()
     {
         return Err(AppError::InvalidDescription {
-            input: desc.clone(),
+            input: desc.to_string(),
         });
     }
     Ok(())
@@ -129,7 +130,7 @@ pub fn add_task(
     priority: Option<Priority>,
 ) -> Result<(), AppError> {
     validate_content(&content)?;
-    validate_desc(&description)?;
+    validate_desc(description.as_deref())?;
 
     store.update_with_backup(|tasks| {
         let new_id: usize = tasks.iter().map(|t| t.id()).max().unwrap_or(0) + 1;
@@ -145,62 +146,75 @@ pub fn add_task(
     })
 }
 
+/// 将tasks列表中的task与task所在的序号，合并成一个元组，整理成列表返回
+///
+/// 用于下面list_table传入打印，不再由list_table按顺序生成序号，这样也可以支持更多操作
+pub fn with_display_no(tasks: &[Task]) -> Vec<(usize, Task)> {
+    tasks
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (i + 1, t.clone()))
+        .collect()
+}
+
 /// list业务函数
 ///
 /// 传入参数sort,排序方式
 /// 传入参数find,查找的内容
 /// 传出带任务编号的Vec<(usize, Task)>
-/// find在内存中查找后不落盘，打印的时候直接打印这里传出的usize编号，否则用户没法按看到的no操作对应的任务
+///
+/// 逻辑：
+/// - 只有在cli交互下，进行排序操作，且不查找，才落盘，修改tasks.json文件
+/// - 其他条件下，都在内存中进行排序和查找
 pub fn list_tasks(
     store: &TaskStore,
     sort: Option<SortBy>,
     find: Option<String>,
 ) -> Result<Option<Vec<(usize, Task)>>, AppError> {
-    // 如果有find参数，进行查找
-    if let Some(keyword) = find {
-        // 载入列表
-        // 先判断是否为空，避免对空列表查找，浪费时间
-        let tasks = store.load()?;
-        if tasks.is_empty() {
-            return Ok(None);
-        }
+    // 载入列表
+    let tasks = store.load()?;
+    // 先判断是否为空，避免对空列表查找，浪费时间
+    if tasks.is_empty() {
+        return Ok(None);
+    }
 
+    // 查找分支
+    let mut result_tasks: Vec<(usize, Task)> = if let Some(keyword) = &find {
+        // 如果有find参数，在内存中查找
         let keyword_lower = keyword.to_lowercase();
-        let mut filtered: Vec<(usize, Task)> = tasks
+        let now = Utc::now();
+        tasks
             .into_iter()
             .enumerate()
-            .filter(|(_, t)| find_tasks(t, &keyword_lower))
+            .filter(|(_, t)| find_tasks(t, &keyword_lower, now))
             .map(|(i, t)| (i + 1, t)) // 把查找到的任务，和他在原来tasks列表的序号，合并成元组
-            .collect();
-        // 如果在查找的同时指定排序，在内存中排序不落盘
-        if let Some(order) = sort {
-            sort_tasks(&mut filtered, order, |(_, t)| t);
-        }
-        if filtered.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(filtered))
+            .collect()
     } else {
-        // 不载入判断是否为空tasks,否则在需要排序的情况下要读写三次tasks，开销更大
-        // 只有排序，不查找，依然落盘，这样输出的序号是整齐连续的，更加美观
-        if let Some(order) = sort {
+        // 没有find参数，返回带序号的列表
+        with_display_no(&tasks)
+    };
+
+    // 排序分支
+    if let Some(order) = sort {
+        // 落盘操作， 输出的序号连续且有序，更加美观：
+        // - 用户使用cli操作 && 且只进行排序
+        if store.interface_type() == UserInterfaceTypes::Cli && find.is_none() {
             store.update_without_backup(|tasks: &mut Vec<Task>| {
                 sort_tasks(tasks, order, |t| t);
                 Ok(())
             })?;
+            result_tasks = with_display_no(&store.load()?);
+        } else {
+            // 在内存中操作，不落盘：
+            // - 用户使用tui交互 || 既排序又查找
+            sort_tasks(&mut result_tasks, order, |(_, t)| t);
         }
-        let tasks = store.load()?;
-        if tasks.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(
-            tasks
-                .into_iter()
-                .enumerate()
-                .map(|(i, t)| (i + 1, t))
-                .collect(),
-        ))
     }
+
+    if result_tasks.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(result_tasks))
 }
 
 /// 排序函数
@@ -231,11 +245,11 @@ where
 /// 搜索函数
 ///
 /// 检查任务中是否匹配关键词
-fn find_tasks(task: &Task, keyword: &str) -> bool {
+fn find_tasks(task: &Task, keyword: &str, now: DateTime<Utc>) -> bool {
     match keyword {
         "done" => task.is_complete(),
         "undone" | "todo" => !task.is_complete(),
-        "overdue" => task.is_overdue(Utc::now()),
+        "overdue" => task.is_overdue(now),
         _ => {
             task.content().to_lowercase().contains(keyword)
                 || task
