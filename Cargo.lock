@@ -472,8 +472,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-todo-cli"
-version = "0.5.1"
+name = "rstodo-TiaoFeng"
+version = "0.5.2"
 dependencies = [
  "chrono",
  "clap",

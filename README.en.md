@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rust-todo-cli)](https://github.com/TiaoFeng/rust-todo-cli/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rstodo)](https://github.com/TiaoFeng/rstodo/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
 
@@ -23,7 +23,7 @@ A command-line to-do tool written in Rust. It supports adding, deleting, editing
 
 ## Installation
 Download the latest precompiled version:
-[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rust-todo-cli)](https://github.com/TiaoFeng/rust-todo-cli/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/TiaoFeng/rstodo)](https://github.com/TiaoFeng/rstodo/releases/latest)
 or build from source (see the “Building” section below).
 
 ## Quick Start (Example)
@@ -250,8 +250,8 @@ rstodo status
 Rust ≥ 1.89.0
 
 ```bash
-git clone https://github.com/TiaoFeng/rust-todo-cli.git
-cd rust-todo-cli
+git clone https://github.com/TiaoFeng/rstodo.git
+cd rstodo
 cargo build --release
 ```
 
