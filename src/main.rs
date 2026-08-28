@@ -52,6 +52,8 @@ enum Commands {
     },
     List {
         sort: Option<SortBy>,
+        #[arg(short, long)]
+        find: Option<String>,
     },
     Show {
         no: usize,
@@ -96,7 +98,7 @@ fn main() {
             deadline,
             priority,
         } => commands::change(no, &store, content, description, deadline, priority),
-        Commands::List { sort } => commands::list(&store, sort),
+        Commands::List { sort, find } => commands::list(&store, sort, find),
         Commands::Show { no } => commands::show(no, &store),
         Commands::Status => commands::status(&store),
         Commands::Done { nos } => commands::done(nos, &store),

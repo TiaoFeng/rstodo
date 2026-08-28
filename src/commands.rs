@@ -12,7 +12,7 @@ use crate::error::AppError;
 use crate::io::{
     cli_print::{
         tasks_status_table::status_table,
-        tasks_table::{list_table, show_table},
+        tasks_table::{list_table, show_table, with_display_no},
     },
     storage::TaskStore,
 };
@@ -34,8 +34,8 @@ pub fn add(
     add_task(store, content, description, parsed_deadline, priority)
 }
 
-pub fn list(store: &TaskStore, sort: Option<SortBy>) -> Result<(), AppError> {
-    let tasks_list = list_tasks(store, sort)?;
+pub fn list(store: &TaskStore, sort: Option<SortBy>, find: Option<String>) -> Result<(), AppError> {
+    let tasks_list = list_tasks(store, sort, find)?;
     match tasks_list {
         None => {
             println!("+_+ No tasks");
@@ -99,7 +99,10 @@ pub fn delete(
             Err(err) => return Err(err),
         };
         println!("The following items will be deleted:");
-        println!("{}", list_table(&delete_tasks, Utc::now())); // 复用了list_table，实际上由于都是已完成的永远不会着色
+        println!(
+            "{}",
+            list_table(&with_display_no(&delete_tasks), Utc::now()) // 现在打印需要传入&[(usize, Task)]
+        ); // 复用了list_table，实际上由于都是已完成的永远不会着色
 
         if !yes
             && !confirm(
@@ -146,7 +149,10 @@ pub fn undo(store: &TaskStore, yes: bool) -> Result<(), AppError> {
         Err(e) => return Err(e),
     };
     println!("The list will be restored to:");
-    println!("{}", list_table(&backup_tasks, Utc::now()));
+    println!(
+        "{}",
+        list_table(&with_display_no(&backup_tasks), Utc::now()) // 现在打印需要传入&[(usize, Task)]
+    );
 
     if !yes && !confirm(&mut io::stdin().lock(), "Confirm undo? [y/N] ") {
         println!(">_< Undo cancelled.");
@@ -314,17 +320,80 @@ mod commands_test {
             let guard = TempGuard::new("test_list_show");
             let store = TaskStore::new(Some(guard.main_path()));
 
-            assert!(list(&store, None).is_ok());
+            assert!(list(&store, None, None).is_ok());
             set_test_task(&store);
-            assert!(list(&store, Some(SortBy::Priority)).is_ok());
+            assert!(list(&store, Some(SortBy::Priority), None).is_ok());
             println!();
-            assert!(list(&store, Some(SortBy::Deadline)).is_ok());
+            assert!(list(&store, Some(SortBy::Deadline), None).is_ok());
             println!();
             assert!(show(2, &store).is_ok());
             println!();
 
             assert!(show(0, &store).is_err());
             assert!(show(99, &store).is_err());
+        }
+
+        #[test]
+        fn test_list_find() {
+            let guard = TempGuard::new("test_list_find");
+            let store = TaskStore::new(Some(guard.main_path()));
+
+            // 空列表搜索返回None，不会报错
+            assert!(list(&store, None, Some("empty".to_string())).is_ok());
+
+            set_test_task(&store);
+
+            // 搜索content
+            let out = list_tasks(&store, None, Some("task1".to_string())).unwrap();
+            assert!(out.is_some());
+            let tasks = out.unwrap();
+            assert_eq!(tasks.len(), 1);
+            assert_eq!(tasks[0].1.content(), "task1");
+            assert_eq!(tasks[0].0, 1); // 序号为1
+
+            // 搜索description
+            let out = list_tasks(&store, None, Some("desc1".to_string())).unwrap();
+            assert!(out.is_some());
+            let tasks = out.unwrap();
+            assert_eq!(tasks.len(), 1);
+            assert_eq!(tasks[0].1.content(), "task1");
+
+            // 搜索priority
+            let out = list_tasks(&store, None, Some("medium".to_string())).unwrap();
+            assert!(out.is_some());
+            let tasks = out.unwrap();
+            assert_eq!(tasks.len(), 1);
+            assert_eq!(tasks[0].0, 3); // 保留在原列表中的序号，应该是3
+            assert_eq!(tasks[0].1.priority(), Priority::Medium);
+
+            // 搜索不存在的关键词
+            let out = list_tasks(&store, None, Some("nonexistent".to_string())).unwrap();
+            assert!(out.is_none());
+
+            // done
+            done(vec![1, 3], &store).unwrap();
+            let out = list_tasks(&store, None, Some("done".to_string())).unwrap();
+            assert!(out.is_some());
+            let tasks = out.unwrap();
+            assert_eq!(tasks.len(), 2); // task1, task3
+            assert_eq!(tasks[0].0, 1);
+            assert_eq!(tasks[1].0, 3);
+
+            // todo
+            let result = list_tasks(&store, None, Some("todo".to_string())).unwrap();
+            assert!(result.is_some());
+            let tasks = result.unwrap();
+            assert_eq!(tasks.len(), 1); // task2
+            assert_eq!(tasks[0].0, 2); // task2
+
+            // 测试搜索+排序组合
+            let result =
+                list_tasks(&store, Some(SortBy::Priority), Some("done".to_string())).unwrap();
+            assert!(result.is_some());
+            let tasks = result.unwrap();
+            assert_eq!(tasks.len(), 2); // task1(high), task3(medium)
+            // 验证排序正确性
+            assert!(tasks[0].1.priority() <= tasks[1].1.priority());
         }
     }
 
@@ -525,7 +594,7 @@ mod commands_test {
 
             set_test_task(&store);
 
-            list(&store, Some(SortBy::Deadline)).unwrap();
+            list(&store, Some(SortBy::Deadline), None).unwrap();
             let tasks = store.load().unwrap();
             let expected = to_utc(
                 &NaiveDateTime::parse_from_str("2000-01-01T12:00:00", "%Y-%m-%dT%H:%M:%S").unwrap(),
@@ -534,7 +603,7 @@ mod commands_test {
             assert_eq!(tasks[0].deadline(), Some(expected));
             assert!(tasks[2].deadline().is_none());
 
-            list(&store, Some(SortBy::Priority)).unwrap();
+            list(&store, Some(SortBy::Priority), None).unwrap();
             let tasks = store.load().unwrap();
             assert_eq!(tasks[0].priority(), Priority::High);
             assert_eq!(tasks[1].priority(), Priority::Medium);
@@ -615,8 +684,8 @@ mod commands_test {
             assert_eq!(store.load_backup().unwrap()[2].content(), "task3");
             assert_eq!(store.load_backup().unwrap().len(), 3);
 
-            list(&store, Some(SortBy::Deadline)).unwrap();
-            list(&store, Some(SortBy::Priority)).unwrap();
+            list(&store, Some(SortBy::Deadline), None).unwrap();
+            list(&store, Some(SortBy::Priority), None).unwrap();
             undo(&store, true).unwrap();
             assert_eq!(store.load().unwrap()[1].content(), "task2");
             assert_eq!(store.load().unwrap()[2].content(), "task3");

@@ -54,7 +54,7 @@ mod tests_add_list {
 
     #[test]
     fn test_add_list() {
-        let guard = TempGuard::new("add_list");
+        let guard = TempGuard::new("test_add_list");
 
         let out = run(
             &[
@@ -84,56 +84,193 @@ mod tests_add_list {
     }
 
     #[test]
+    fn test_sort() {
+        let guard = TempGuard::new("sort");
+
+        assert!(
+            run(
+                &["add", "cli_test1", "-D", "cli_desc1", "-p", "low"],
+                &guard.main_path()
+            )
+            .stderr
+            .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test2", "-D", "cli_desc2"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test3", "-p", "high"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(&["add", "cli_test4", "-p", "medium"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+
+        let out = run(&["list", "p"], &guard.main_path());
+        let out_string = out_tostring(&out);
+        let high = out_string
+            .find("cli_test3")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        let mid = out_string
+            .find("cli_test4")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        let low1 = out_string
+            .find("cli_test1")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        let low2 = out_string
+            .find("cli_test2")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        assert!(high < mid && mid < low1 && mid < low2);
+
+        let out = run(&["list"], &guard.main_path());
+        let out_string = out_tostring(&out);
+        let high = out_string
+            .find("cli_test3")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        let mid = out_string
+            .find("cli_test4")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        let low1 = out_string
+            .find("cli_test1")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        let low2 = out_string
+            .find("cli_test2")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        assert!(high < mid && mid < low1 && mid < low2);
+    }
+
+    #[test]
     fn test_list_empty() {
-        let guard = TempGuard::new("empty");
+        let guard = TempGuard::new("test_list_empty");
         let out = run(&["list"], &guard.main_path());
         assert!(out_tostring(&out).contains("No tasks"));
     }
-}
 
-#[test]
-fn test_sort() {
-    let guard = TempGuard::new("sort");
-
-    assert!(
-        run(
-            &["add", "cli_test1", "-D", "cli_desc1", "-p", "low"],
-            &guard.main_path()
-        )
-        .stderr
-        .is_empty()
-    );
-    assert!(
-        run(&["add", "cli_test2", "-D", "cli_desc2"], &guard.main_path())
+    #[test]
+    fn test_list_find() {
+        let guard = TempGuard::new("test_list_find");
+        assert!(
+            run(
+                &["add", "cli_test1", "-D", "cli_desc1", "-p", "low"],
+                &guard.main_path()
+            )
             .stderr
             .is_empty()
-    );
-    assert!(
-        run(&["add", "cli_test3", "-p", "high"], &guard.main_path())
+        );
+        assert!(
+            run(
+                &[
+                    "add",
+                    "cli_test2",
+                    "-D",
+                    "cli_desc2",
+                    "-d",
+                    "2000-2-2T22:22:22"
+                ],
+                &guard.main_path()
+            )
             .stderr
             .is_empty()
-    );
-    assert!(
-        run(&["add", "cli_test4", "-p", "medium"], &guard.main_path())
+        );
+        assert!(
+            run(&["add", "cli_test3", "-p", "high"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+        assert!(
+            run(
+                &[
+                    "add",
+                    "cli_test4",
+                    "-p",
+                    "medium",
+                    "-d",
+                    "2000-2-4T22:22:44"
+                ],
+                &guard.main_path()
+            )
             .stderr
             .is_empty()
-    );
+        );
 
-    let out = run(&["list", "p"], &guard.main_path());
-    let out_string = out_tostring(&out);
-    let high = out_string
-        .find("cli_test3")
-        .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
-    let mid = out_string
-        .find("cli_test4")
-        .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
-    let low1 = out_string
-        .find("cli_test1")
-        .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
-    let low2 = out_string
-        .find("cli_test2")
-        .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
-    assert!(high < mid && mid < low1 && mid < low2);
+        let out = run(&["list", "-f", "test1"], &guard.main_path());
+        let out_string = out_tostring(&out);
+        assert!(out_string.contains("cli_test1"));
+        let out = run(&["list", "-f", "desc2"], &guard.main_path());
+        let out_string = out_tostring(&out);
+        assert!(out_string.contains("cli_test2"));
+        let out = run(&["list", "-f", "high"], &guard.main_path());
+        let out_string = out_tostring(&out);
+        assert!(out_string.contains("cli_test3"));
+        let out = run(&["list", "-f", "02-02"], &guard.main_path());
+        let out_string = out_tostring(&out);
+        assert!(out_string.contains("cli_test2"));
+        assert!(out_string.contains("2000-02-02"));
+        assert!(out_string.contains("!"));
+
+        assert!(
+            run(&["done", "1", "3"], &guard.main_path())
+                .stderr
+                .is_empty()
+        );
+
+        let out = run(&["list", "p", "-f", "done"], &guard.main_path());
+        let out_string = out_tostring(&out);
+        assert!(out_string.contains("cli_test1"));
+        assert!(!out_string.contains("cli_test2"));
+        assert!(out_string.contains("cli_test3"));
+        assert!(!out_string.contains("cli_test4"));
+        assert!(out_string.contains("1"));
+        assert!(!out_string.contains("2"));
+        assert!(out_string.contains("3"));
+        assert!(!out_string.contains("4"));
+        let high = out_string
+            .find("cli_test3")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        let low = out_string
+            .find("cli_test1")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        assert!(high < low);
+
+        let out = run(&["list", "d", "-f", "todo"], &guard.main_path());
+        let out_string = out_tostring(&out);
+        assert!(!out_string.contains("cli_test1"));
+        assert!(out_string.contains("cli_test2"));
+        assert!(!out_string.contains("cli_test3"));
+        assert!(out_string.contains("cli_test4"));
+        assert!(!out_string.contains("1"));
+        assert!(out_string.contains("2"));
+        assert!(!out_string.contains("3"));
+        assert!(out_string.contains("4"));
+        let high = out_string
+            .find("cli_test2")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        let low = out_string
+            .find("cli_test4")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        assert!(high < low);
+
+        let out = run(&["list"], &guard.main_path());
+        let out_string = out_tostring(&out);
+        let test1 = out_string
+            .find("cli_test1")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        let test2 = out_string
+            .find("cli_test2")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        let test3 = out_string
+            .find("cli_test3")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        let test4 = out_string
+            .find("cli_test4")
+            .unwrap_or_else(|| panic!("Not found in: \n {}", out_string));
+        assert!(test1 < test2 && test2 < test3 && test3 < test4);
+    }
 }
 
 #[test]

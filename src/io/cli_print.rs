@@ -33,12 +33,24 @@ pub mod tasks_table {
 
     const DEADLINE_COL: usize = 3;
 
-    /// 将传入的整个`&[Task]`整理为表格`Table`返回，用于list
-    pub fn list_table(tasks: &[Task], now: DateTime<Utc>) -> Table {
+    /// 将tasks列表中的task与task所在的序号，合并成一个元组，整理成列表返回
+    ///
+    /// 用于下面list_table传入打印，不再由list_table按顺序生成序号，这样也可以支持更多操作
+    pub fn with_display_no(tasks: &[Task]) -> Vec<(usize, Task)> {
+        tasks
+            .iter()
+            .enumerate()
+            .map(|(i, t)| (i + 1, t.clone()))
+            .collect()
+    }
+
+    /// 将传入的整个`&[(usize, Task)]`(调整为自带编号，而不是在输出的时候编号)
+    /// 整理为表格`Table`返回，用于list
+    pub fn list_table(tasks: &[(usize, Task)], now: DateTime<Utc>) -> Table {
         let mut table = new_task_table();
 
-        for (i, task) in tasks.iter().enumerate() {
-            let row = TaskRow { task, no: i + 1 };
+        for (no, task) in tasks {
+            let row = TaskRow { task, no: *no };
             table.add_row(row.to_table(now));
         }
         table

@@ -10,6 +10,7 @@ use clap::ValueEnum;
 use crate::error::AppError;
 use crate::io::storage::TaskStore;
 use crate::task::{Priority, Task};
+use crate::time::to_local_time;
 
 /// 定义了用户可选择的两种排序方式，按照时间或优先级
 #[derive(ValueEnum, Clone)]
@@ -140,40 +141,110 @@ pub fn add_task(
     })
 }
 
-pub fn list_tasks(store: &TaskStore, sort: Option<SortBy>) -> Result<Option<Vec<Task>>, AppError> {
-    match sort {
-        None => {
-            let tasks: Vec<Task> = store.load()?;
-            if tasks.is_empty() {
-                return Ok(None);
-            }
-            Ok(Some(tasks))
+/// list业务函数
+///
+/// 传入参数sort,排序方式
+/// 传入参数find,查找的内容
+/// 传出带任务编号的Vec<(usize, Task)>
+/// find在内存中查找后不落盘，打印的时候直接打印这里传出的usize编号，否则用户没法按看到的no操作对应的任务
+pub fn list_tasks(
+    store: &TaskStore,
+    sort: Option<SortBy>,
+    find: Option<String>,
+) -> Result<Option<Vec<(usize, Task)>>, AppError> {
+    // 如果有find参数，进行查找
+    if let Some(keyword) = find {
+        // 载入列表
+        // 先判断是否为空，避免对空列表查找，浪费时间
+        let tasks = store.load()?;
+        if tasks.is_empty() {
+            return Ok(None);
         }
-        Some(order) => {
+
+        let keyword_lower = keyword.to_lowercase();
+        let mut filtered: Vec<(usize, Task)> = tasks
+            .into_iter()
+            .enumerate()
+            .filter(|(_, t)| find_tasks(t, &keyword_lower))
+            .map(|(i, t)| (i + 1, t)) // 把查找到的任务，和他在原来tasks列表的序号，合并成元组
+            .collect();
+        // 如果在查找的同时指定排序，在内存中排序不落盘
+        if let Some(order) = sort {
+            sort_tasks(&mut filtered, order, |(_, t)| t);
+        }
+        if filtered.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(filtered))
+    } else {
+        // 不载入判断是否为空tasks,否则在需要排序的情况下要读写三次tasks，开销更大
+        // 只有排序，不查找，依然落盘，这样输出的序号是整齐连续的，更加美观
+        if let Some(order) = sort {
             store.update_without_backup(|tasks: &mut Vec<Task>| {
-                sort_tasks(tasks, order);
+                sort_tasks(tasks, order, |t| t);
                 Ok(())
             })?;
-            let tasks = store.load()?;
-            if tasks.is_empty() {
-                return Ok(None);
-            }
-            Ok(Some(tasks))
         }
+        let tasks = store.load()?;
+        if tasks.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(
+            tasks
+                .into_iter()
+                .enumerate()
+                .map(|(i, t)| (i + 1, t))
+                .collect(),
+        ))
     }
 }
 
-fn sort_tasks(tasks: &mut [Task], order: SortBy) {
+/// 排序函数
+///
+/// 实现了基于任务deadline和priority的两种排序模式
+/// 使用泛型同时兼容带序号的tasks列表和不带序号的tasks列表
+fn sort_tasks<T, F>(items: &mut [T], order: SortBy, get_task: F)
+where
+    F: Fn(&T) -> &Task,
+{
     match order {
         SortBy::Deadline => {
-            tasks.sort_by(|a: &Task, b: &Task| match (a.deadline(), b.deadline()) {
-                (Some(d1), Some(d2)) => d1.cmp(&d2),
-                (Some(_), None) => Ordering::Less,
-                (None, Some(_)) => Ordering::Greater,
-                (None, None) => Ordering::Equal,
-            })
+            items.sort_by(|a, b| {
+                let ta = get_task(a);
+                let tb = get_task(b);
+                match (ta.deadline(), tb.deadline()) {
+                    (Some(d1), Some(d2)) => d1.cmp(&d2),
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => Ordering::Equal,
+                }
+            });
         }
-        SortBy::Priority => tasks.sort_by_key(|t: &Task| t.priority()),
+        SortBy::Priority => items.sort_by_key(|t| get_task(t).priority()),
+    }
+}
+
+/// 搜索函数
+///
+/// 检查任务中是否匹配关键词
+fn find_tasks(task: &Task, keyword: &str) -> bool {
+    match keyword {
+        "done" => task.is_complete(),
+        "undone" | "todo" => !task.is_complete(),
+        "overdue" => task.is_overdue(Utc::now()),
+        _ => {
+            task.content().to_lowercase().contains(keyword)
+                || task
+                    .description()
+                    .is_some_and(|desc| desc.to_lowercase().contains(keyword))
+                || task.priority().to_string().to_lowercase().contains(keyword)
+                || task.deadline().is_some_and(|deadline| {
+                    to_local_time(&deadline)
+                        .to_string()
+                        .to_lowercase()
+                        .contains(keyword)
+                })
+        }
     }
 }
 
