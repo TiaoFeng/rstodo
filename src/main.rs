@@ -121,7 +121,7 @@ fn main() {
             Commands::Delete { nos, alldone, yes } => commands::delete(nos, &store, alldone, yes),
         }
     } else {
-        tui::run::run(&store)
+        tui::run(&store)
     };
     if let Err(apperr) = result {
         eprintln!("Error: {}", apperr);

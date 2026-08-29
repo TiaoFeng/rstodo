@@ -1,7 +1,16 @@
 //! 错误模块
 //!
 //! 定义了可能出现的错误类型，并实现了错误的输出trait
+use crate::UserInterfaceTypes;
 use std::{error::Error, fmt, path::Path};
+
+/// 项目错误类型枚举
+///
+/// 新增ui字段
+pub struct UiError<'a> {
+    error: &'a AppError,
+    ui_type: UserInterfaceTypes,
+}
 
 /// 项目错误类型枚举
 #[derive(Debug)]
@@ -46,15 +55,15 @@ pub fn io_err(operation: &'static str, path: &Path, err: std::io::Error) -> AppE
     }
 }
 
-impl From<std::io::Error> for AppError {
-    fn from(value: std::io::Error) -> Self {
-        AppError::Tui(value)
+impl AppError {
+    pub fn with_ui(&self, ui_type: UserInterfaceTypes) -> UiError<'_> {
+        UiError {
+            error: self,
+            ui_type,
+        }
     }
-}
 
-/// 为 `AppError` 实现 `fmt::Display` trait，用于定义每种错误的输出内容
-impl fmt::Display for AppError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt_full(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AppError::Corrupted { path, source } => {
                 write!(f, "task file '{}' is corrupted: {}", path, source)
@@ -130,6 +139,88 @@ impl fmt::Display for AppError {
             AppError::Tui(err) => {
                 write!(f, "Something wrong: {}", err)
             }
+        }
+    }
+
+    fn fmt_short(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AppError::Corrupted { path, source } => {
+                write!(f, "task file '{}' is corrupted: {}", path, source)
+            }
+            AppError::InvalidContent { input: _ } => {
+                write!(f, "The 'content' field cannot be left blank.")
+            }
+            AppError::InvalidDeadline { input: _ } => {
+                write!(
+                    f,
+                    "Invalid deadline. Example: 2000-1-1 or 2000-1-1T12:00:00",
+                )
+            }
+            AppError::InvalidDescription { input: _ } => {
+                write!(f, "The 'description' field cannot be left blank.",)
+            }
+            AppError::Io {
+                operation,
+                path: _,
+                source: _,
+            } => {
+                write!(f, "failed to {}", operation)
+            }
+            AppError::InvalidLocalTime => {
+                write!(
+                    f,
+                    "Time Conversion Error. It may be due to daylight saving time."
+                )
+            }
+            AppError::NothingToChange => {
+                write!(f, "Nothing to change")
+            }
+            AppError::NothingToUndo => {
+                write!(f, "Nothing to undo")
+            }
+            AppError::NothingToDelete => {
+                write!(f, "Nothing to delete")
+            }
+            AppError::TaskNotFound { no } => {
+                write!(f, "Task not found: no {}", no)
+            }
+            AppError::UndoConflict => {
+                write!(f, "Task list changed, please run undo alldone again",)
+            }
+            AppError::DeleteConflict => {
+                write!(f, "Task list changed, please run delete alldone again")
+            }
+            AppError::DeleteConflictOperations => {
+                write!(
+                    f,
+                    "You cannot enter both a serial number and 'alldone' at the same time."
+                )
+            }
+            AppError::Tui(err) => {
+                write!(f, "An error occurred in tui: {}", err)
+            }
+        }
+    }
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(value: std::io::Error) -> Self {
+        AppError::Tui(value)
+    }
+}
+
+/// 为 `AppError` 实现 `fmt::Display` trait，用于定义每种错误的输出内容
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_full(f)
+    }
+}
+
+impl fmt::Display for UiError<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.ui_type {
+            UserInterfaceTypes::Cli => self.error.fmt_full(f),
+            UserInterfaceTypes::Tui => self.error.fmt_short(f),
         }
     }
 }
