@@ -22,6 +22,7 @@ comfy-table = "8.0.0"
 dirs = "6"
 crossterm = "0.29"
 ratatui = "0.30.2"
+unicode-segmentation = "1"
 
 # The profile that 'dist' will build with
 [profile.dist]

@@ -1,6 +1,6 @@
 # mygitignore
-*.json
 *.txt
+ui_ref/
 
 # Created by https://www.toptal.com/developers/gitignore/api/linux,rust,visualstudiocode
 # Edit at https://www.toptal.com/developers/gitignore?templates=linux,rust,visualstudiocode
