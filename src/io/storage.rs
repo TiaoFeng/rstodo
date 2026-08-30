@@ -377,7 +377,7 @@ fn load_backup_fallback(
     match read_task_from(&backup_file, backup_path) {
         Ok(Some(tasks)) => {
             if !tasks.is_empty() {
-                warn_recovered_from_backup(backup_path);
+                warn_recovered_from_backup(backup_path, types);
             }
             Ok(tasks)
         }
@@ -767,7 +767,7 @@ mod tests {
         fn test_backup_write_fail() {
             use std::os::unix::fs::symlink;
             let guard = TempGuard::new("backup_write_fail");
-            let path = TaskStore::new(Some(guard.main_path()));
+            let path = TaskStore::new(Some(guard.main_path()), Cli);
 
             write_file(
                 path.main_path(),
@@ -949,7 +949,7 @@ mod tests {
         #[test]
         fn test_restore_empty_task() {
             let guard = TempGuard::new("test_restore_empty_task");
-            let path = TaskStore::new(Some(guard.main_path()));
+            let path = TaskStore::new(Some(guard.main_path()), Cli);
 
             write_file(
                 path.main_path(),

@@ -188,7 +188,7 @@ pub fn status(store: &TaskStore) -> Result<(), AppError> {
 #[cfg(test)]
 mod commands_test {
     use super::*;
-    use crate::UserInterfaceTypes;
+    use crate::UserInterfaceTypes::Cli;
     use crate::test_helpers::TempGuard;
     use crate::time::to_utc;
     use chrono::NaiveDateTime;
@@ -220,7 +220,7 @@ mod commands_test {
         #[test]
         fn test_add() {
             let guard = TempGuard::new("add");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             // 测试1：全子项写入
             add(
@@ -282,7 +282,7 @@ mod commands_test {
         #[test]
         fn test_add_err() {
             let guard = TempGuard::new("test_add_err");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             set_test_task(&store);
             // 测试4：错误数据测试
@@ -322,7 +322,7 @@ mod commands_test {
         fn test_backup_not_writable() {
             use std::{fs, os::unix::fs::PermissionsExt};
             let guard = TempGuard::new("test_backup_not_writable");
-            let store = TaskStore::new(Some(guard.main_path()));
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             assert!(add("test1".to_string(), &store, None, None, None).is_ok());
             assert!(add("test2".to_string(), &store, None, None, None).is_ok());
@@ -354,7 +354,7 @@ mod commands_test {
         #[test]
         fn test_list_show() {
             let guard = TempGuard::new("test_list_show");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             assert!(list(&store, None, None).is_ok());
             set_test_task(&store);
@@ -372,7 +372,7 @@ mod commands_test {
         #[test]
         fn test_list_find() {
             let guard = TempGuard::new("test_list_find");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             // 空列表搜索返回None，不会报错
             assert!(list(&store, None, Some("empty".to_string())).is_ok());
@@ -440,7 +440,7 @@ mod commands_test {
         #[test]
         fn test_delete_sigle() {
             let guard = TempGuard::new("test_delete_sigle");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             assert!(delete(vec![1], &store, false, false).is_err());
 
@@ -459,7 +459,7 @@ mod commands_test {
         #[test]
         fn test_delete_multiple() {
             let guard = TempGuard::new("test_delete_multiple");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             set_test_task(&store);
             delete(vec![1, 2], &store, false, false).unwrap();
@@ -473,7 +473,7 @@ mod commands_test {
         #[test]
         fn test_delete_multiple_duplicate() {
             let guard = TempGuard::new("test_delete_multiple_duplicate");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
             set_test_task(&store);
             delete(vec![3, 1, 1, 3, 1, 3], &store, false, false).unwrap();
             let tasks = store.load().unwrap();
@@ -484,7 +484,7 @@ mod commands_test {
         #[test]
         fn test_delete_alldone() {
             let guard = TempGuard::new("test_delete_alldone");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
             set_test_task(&store);
             assert!(done(vec![1, 2], &store).is_ok());
             assert!(delete(vec![], &store, true, true).is_ok());
@@ -496,7 +496,7 @@ mod commands_test {
         #[test]
         fn test_delete_alldone_no_tasks_done() {
             let guard = TempGuard::new("test_delete_alldone_no_tasks_done");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
             set_test_task(&store);
             assert!(delete(vec![], &store, true, true).is_ok());
             let tasks = store.load().unwrap();
@@ -509,7 +509,7 @@ mod commands_test {
         #[test]
         fn test_delete_alldone_err() {
             let guard = TempGuard::new("test_delete_alldone_err");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
             set_test_task(&store);
             assert!(delete(vec![1, 2], &store, true, true).is_err());
             let tasks = store.load().unwrap();
@@ -534,7 +534,7 @@ mod commands_test {
         #[test]
         fn test_change() {
             let guard = TempGuard::new("test_change");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             assert!(change(1, &store, None, None, None, None).is_err());
             assert!(
@@ -595,7 +595,7 @@ mod commands_test {
         #[test]
         fn test_change_err() {
             let guard = TempGuard::new("test_change_err");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
             // 测试7：非法数据
             let tasks = store.load().unwrap();
             assert!(
@@ -626,7 +626,7 @@ mod commands_test {
         #[test]
         fn test_sort() {
             let guard = TempGuard::new("test_sort");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             set_test_task(&store);
 
@@ -654,7 +654,7 @@ mod commands_test {
         #[test]
         fn test_done_undone_sigle() {
             let guard = TempGuard::new("test_done_undone_sigle");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             set_test_task(&store);
 
@@ -670,7 +670,7 @@ mod commands_test {
         #[test]
         fn test_done_undone_multiple() {
             let guard = TempGuard::new("test_done_undone_multiple");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             set_test_task(&store);
 
@@ -693,7 +693,7 @@ mod commands_test {
         #[test]
         fn test_undo() {
             let guard = TempGuard::new("test_undo");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             set_test_task(&store);
             add("undo_test_content1".to_string(), &store, None, None, None).unwrap();
@@ -711,7 +711,7 @@ mod commands_test {
         #[test]
         fn test_undo_after_sort() {
             let guard = TempGuard::new("test_undo_after_sort");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             set_test_task(&store);
             add("undo_test_content1".to_string(), &store, None, None, None).unwrap();
@@ -731,7 +731,7 @@ mod commands_test {
         #[test]
         fn test_undo_to_empty() {
             let guard = TempGuard::new("test_undo_to_empty");
-            let store = TaskStore::new(Some(guard.main_path()));
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             add("undo_test_content1".to_string(), &store, None, None, None).unwrap();
             undo(&store, true).unwrap();
@@ -746,7 +746,7 @@ mod commands_test {
         #[test]
         fn test_status_count() {
             let guard = TempGuard::new("test_status_count");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
             set_test_task(&store);
             assert!(done(vec![1], &store).is_ok());
 
@@ -760,7 +760,7 @@ mod commands_test {
         #[test]
         fn test_status() {
             let guard = TempGuard::new("test_status");
-            let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Cli);
+            let store = TaskStore::new(Some(guard.main_path()), Cli);
 
             assert!(status(&store).is_ok());
             set_test_task(&store);
