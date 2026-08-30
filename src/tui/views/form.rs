@@ -101,7 +101,7 @@ fn label_style(focused: bool) -> Style {
             .fg(THEME.peach)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(THEME.purple)
+        Style::default().fg(THEME.blue)
     }
 }
 

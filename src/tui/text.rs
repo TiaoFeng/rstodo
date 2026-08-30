@@ -3,7 +3,7 @@
 //! 字符串下标均按字符计
 
 use ratatui::text::Line;
-use unicode_segmentation::UnicodeSegmentation;
+use unicode_segmentation::{GraphemeCursor, UnicodeSegmentation};
 
 /// 在字符串光标处插入字符
 pub fn insert_at_cursor(s: &mut String, cursor: &mut usize, c: char) {
@@ -17,30 +17,32 @@ pub fn backspace_at_cursor(s: &mut String, cursor: &mut usize) {
     if *cursor == 0 {
         return;
     }
-    let old_cursor = *cursor;
-    move_cursor_left(s, cursor);
-    let range = byte_idx(s, *cursor)..byte_idx(s, old_cursor);
-    s.replace_range(range, "");
+    let byte_pos = byte_idx(s, *cursor);
+    let mut gc = GraphemeCursor::new(byte_pos, s.len(), true);
+    if let Ok(Some(prev_boundary)) = gc.prev_boundary(s, 0) {
+        s.replace_range(prev_boundary..byte_pos, "");
+        *cursor = s[..prev_boundary].chars().count();
+    }
 }
 
-/// 将光标向左移动一个字素簇。
+/// 将光标向左移动一个字素簇
 pub fn move_cursor_left(s: &str, cursor: &mut usize) {
     if *cursor == 0 {
         return;
     }
-    let prefix: String = s.chars().take(*cursor).collect();
-    let step = prefix
-        .graphemes(true)
-        .next_back()
-        .map_or(1, |g| g.chars().count());
-    *cursor = cursor.saturating_sub(step);
+    let byte_pos = byte_idx(s, *cursor);
+    let mut gc = GraphemeCursor::new(byte_pos, s.len(), true);
+    if let Ok(Some(prev_boundary)) = gc.prev_boundary(s, 0) {
+        *cursor = s[..prev_boundary].chars().count();
+    }
 }
 
-/// 将光标向右移动一个字素簇。
+/// 将光标向右移动一个字素簇
 pub fn move_cursor_right(s: &str, cursor: &mut usize) {
-    let suffix: String = s.chars().skip(*cursor).collect();
-    if let Some(grapheme) = suffix.graphemes(true).next() {
-        *cursor += grapheme.chars().count();
+    let byte_pos = byte_idx(s, *cursor);
+    let mut gc = GraphemeCursor::new(byte_pos, s.len(), true);
+    if let Ok(Some(next_boundary)) = gc.next_boundary(s, 0) {
+        *cursor = s[..next_boundary].chars().count();
     }
 }
 
@@ -49,16 +51,21 @@ pub fn byte_idx(s: &str, char_idx: usize) -> usize {
     s.char_indices().nth(char_idx).map_or(s.len(), |(i, _)| i)
 }
 
+/// 计算从start到end的宽度（上下移动光标保持对齐）
 pub fn range_width(s: &str, start: usize, end: usize) -> usize {
-    let text: String = s.chars().skip(start).take(end - start).collect();
-    Line::from(text).width()
+    let start_byte = byte_idx(s, start);
+    let end_byte = byte_idx(s, end);
+    Line::from(&s[start_byte..end_byte]).width()
 }
 
+/// 计算从start开始end结束，不超过target_width的最大位置（上下移动光标保持对齐）
 pub fn cursor_at_width(s: &str, start: usize, end: usize, target_width: usize) -> usize {
-    let text: String = s.chars().skip(start).take(end - start).collect();
+    let start_byte = byte_idx(s, start);
+    let end_byte = byte_idx(s, end);
+    let slice = &s[start_byte..end_byte];
     let mut cursor = start;
     let mut width = 0;
-    for grapheme in text.graphemes(true) {
+    for grapheme in slice.graphemes(true) {
         let next_width = width + Line::from(grapheme).width();
         if next_width > target_width {
             break;
@@ -106,9 +113,7 @@ pub fn wrap_rows(s: &str, width: usize) -> Vec<(usize, usize)> {
 ///
 /// 光标位于软换行边界时归入下一行行首
 pub fn cursor_row_col(rows: &[(usize, usize)], idx: usize) -> (usize, usize) {
-    let row = rows
-        .iter()
-        .rposition(|&(start, _)| start <= idx)
-        .unwrap_or(0);
+    let row = rows.partition_point(|&(start, _)| start <= idx);
+    let row = if row == 0 { 0 } else { row - 1 };
     (row, idx - rows[row].0)
 }

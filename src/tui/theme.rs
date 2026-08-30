@@ -19,7 +19,7 @@ pub struct Theme {
     /// 选中高亮(大时钟)
     pub peach: Color,
     /// 小标题
-    pub purple: Color,
+    pub blue: Color,
     /// 完成(绿)
     pub green: Color,
     /// 逾期/高优先级(红)
@@ -35,7 +35,7 @@ pub const THEME: Theme = Theme {
     text: Color::Rgb(240, 240, 240),   // 文本
     muted: Color::Rgb(180, 180, 180),  // 次要文本
     peach: Color::Rgb(245, 169, 184),  // 选中高亮
-    purple: Color::Rgb(91, 206, 250),  // 小标题
+    blue: Color::Rgb(91, 206, 250),    // 小标题
     green: Color::Rgb(120, 190, 32),   // 完成
     red: Color::Rgb(203, 51, 59),      // 逾期，高优先级
     yellow: Color::Rgb(255, 199, 44),  // 中优先级
@@ -62,9 +62,7 @@ impl Theme {
 
     /// 区块标题样式
     pub fn title(&self) -> Style {
-        Style::default()
-            .fg(self.purple)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(self.blue).add_modifier(Modifier::BOLD)
     }
 
     /// 次要文本样式
