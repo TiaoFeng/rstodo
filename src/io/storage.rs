@@ -143,14 +143,10 @@ impl TaskStore {
             self.types,
         )?;
         f(&mut tasks)?;
-        if refresh_backup
-            && origin == Origin::Main
-            && let Err(err) =
-                copy_main_to_backup(&main, self.main_path(), &backup, self.backup_path())
-            && self.types == UserInterfaceTypes::Cli
-        {
-            eprintln!(">_< Warning: backup failed: {}", err);
-        };
+        if refresh_backup && origin == Origin::Main {
+            copy_main_to_backup(&main, self.main_path(), &backup, self.backup_path())?;
+        }
+
         overwrite(
             &main,
             serialize_tasks(&tasks, self.main_path())?.as_bytes(),
@@ -292,19 +288,6 @@ fn read_string(file: &File, path: &Path) -> Result<String, AppError> {
     Ok(text)
 }
 
-/// 读取传入的`&File`句柄中的文件内容，返回文件全文的`Vec<u8>`字符比特，用于覆写其他文件
-fn read_bytes(file: &File, path: &Path) -> Result<Vec<u8>, AppError> {
-    let mut f = file
-        .try_clone()
-        .map_err(|err| io_err("try clone", path, err))?;
-    f.seek(SeekFrom::Start(0))
-        .map_err(|err| io_err("seek to start", path, err))?;
-    let mut data: Vec<u8> = Vec::new();
-    f.read_to_end(&mut data)
-        .map_err(|err| io_err("read to end", path, err))?;
-    Ok(data)
-}
-
 /// 使用传入的`&[u8]`字符比特，覆写到`&File`传入的文件中
 fn overwrite(file: &File, data: &[u8], path: &Path) -> Result<(), AppError> {
     let mut f = file
@@ -327,15 +310,18 @@ fn read_task_from(file: &File, path: &Path) -> Result<Option<Vec<Task>>, AppErro
     Ok(tasks)
 }
 
-/// 将主文件通过read_bytes读取为字节比特，利用overwrite覆写入备份文件
+/// 将主文件通过read_task读取，调用serialize_tasks序列化后，利用overwrite覆写入备份文件
 fn copy_main_to_backup(
     main: &File,
     main_path: &Path,
     backup: &File,
     backup_path: &Path,
 ) -> Result<(), AppError> {
-    let data = read_bytes(main, main_path)?;
-    overwrite(backup, &data, backup_path)
+    let tasks = read_task_from(main, main_path)?;
+    // 要注意，如果tasks.json文件解析出来是空的(.trim().is_empty())，tasks = None
+    // 此时应该往bak文件写入[]的空列表
+    let data = serialize_tasks(tasks.as_deref().unwrap_or(&[]), main_path)?;
+    overwrite(backup, data.as_bytes(), backup_path)
 }
 
 // tier4
@@ -390,7 +376,9 @@ fn load_backup_fallback(
     lock_share(&backup_file, backup_path)?;
     match read_task_from(&backup_file, backup_path) {
         Ok(Some(tasks)) => {
-            warn_recovered_from_backup(backup_path, types);
+            if !tasks.is_empty() {
+                warn_recovered_from_backup(backup_path);
+            }
             Ok(tasks)
         }
         Ok(None) => Ok(Vec::new()),
@@ -402,7 +390,7 @@ fn load_backup_fallback(
 ///
 /// 逻辑：
 /// - 若备份文件不存在，返回`NothingToUndo`错误
-/// - 若备份文件存在且不为空，返回备份文件中的任务列表
+/// - 若备份文件存在，返回备份文件中的任务列表
 /// - 其他情况，返回`NothingToUndo`错误
 fn load_backup_strict(backup_path: &Path) -> Result<Vec<Task>, AppError> {
     let backup_file = match open_read(backup_path) {
@@ -412,15 +400,16 @@ fn load_backup_strict(backup_path: &Path) -> Result<Vec<Task>, AppError> {
     };
     lock_share(&backup_file, backup_path)?;
     match read_task_from(&backup_file, backup_path)? {
-        Some(tasks) if !tasks.is_empty() => Ok(tasks),
-        _ => Err(AppError::NothingToUndo),
+        Some(tasks) => Ok(tasks),             // 只要备份的tasks存在就都可以回退
+        None => Err(AppError::NothingToUndo), // 只有备份tasks文件不存在为零字节才不能回退
     }
 }
 
 /// 为TaskStore中使用备份覆盖主文件的undo操作提供实现函数
 ///
 /// 逻辑：
-/// - 读取备份文件中的任务列表，若没有任务，返回`NothingToUndo`错误
+/// - 读取备份文件中的任务列表，只要备份文件不是0字节，都可以恢复
+/// - 如果备份文件是0字节或不存在，返回NothingToUndo
 /// - 读取备份文件的字符比特，覆写主文件，完成undo
 fn restore_main_from_backup(
     main: &File,
@@ -428,11 +417,12 @@ fn restore_main_from_backup(
     backup: &File,
     backup_path: &Path,
 ) -> Result<(), AppError> {
-    if read_task_from(backup, backup_path)?.is_none() {
-        return Err(AppError::NothingToUndo);
-    }
-    let data = read_bytes(backup, backup_path)?;
-    overwrite(main, &data, main_path)
+    let tasks = match read_task_from(backup, backup_path)? {
+        Some(t) => t, // 只要备份文件存在都可以备份
+        None => return Err(AppError::NothingToUndo),
+    };
+    let data = serialize_tasks(&tasks, backup_path)?;
+    overwrite(main, data.as_bytes(), main_path)
 }
 
 /// 单元测试
@@ -768,6 +758,40 @@ mod tests {
                 serde_json::from_str(&fs::read_to_string(path.backup_path()).unwrap()).unwrap();
             assert_eq!(backup, vec![set_test_task()]);
         }
+
+        /// 备份文件写入错误，直接抛出错误，而不是警告
+        ///
+        /// 使用linux的/dev/full模拟满盘无法写入的状态
+        #[cfg(target_os = "linux")]
+        #[test]
+        fn test_backup_write_fail() {
+            use std::os::unix::fs::symlink;
+            let guard = TempGuard::new("backup_write_fail");
+            let path = TaskStore::new(Some(guard.main_path()));
+
+            write_file(
+                path.main_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+            );
+            symlink("/dev/full", path.backup_path()).unwrap();
+
+            let before = fs::read_to_string(path.main_path()).unwrap();
+            let err = path
+                .update_with_backup(|t| {
+                    t.push(set_test_task());
+                    Ok(())
+                })
+                .unwrap_err();
+            assert!(matches!(
+                err,
+                AppError::Io {
+                    operation: _,
+                    path: _,
+                    source: _
+                }
+            ));
+            assert_eq!(fs::read_to_string(path.main_path()).unwrap(), before);
+        }
     }
 
     #[cfg(test)]
@@ -921,6 +945,21 @@ mod tests {
                 path.load_backup().unwrap(),
                 vec![set_test_task(), set_test_task()]
             );
+        }
+        #[test]
+        fn test_restore_empty_task() {
+            let guard = TempGuard::new("test_restore_empty_task");
+            let path = TaskStore::new(Some(guard.main_path()));
+
+            write_file(
+                path.main_path(),
+                &serde_json::to_string_pretty(&vec![set_test_task()]).unwrap(),
+            );
+            write_file(path.backup_path(), "[]");
+
+            path.restore_backup(&[]).unwrap();
+            assert_eq!(path.load().unwrap(), vec![]);
+            assert_eq!(path.load_backup().unwrap(), vec![]);
         }
     }
 }
