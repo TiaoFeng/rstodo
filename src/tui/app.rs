@@ -14,30 +14,75 @@ use crate::task::{Priority, Task};
 use crate::time::to_local_time;
 use crate::todo::{SortBy, list_tasks};
 
+/// App界面状态
 pub enum AppState {
-    Main,           // 主界面
-    TaskOptions,    // enter 选项菜单
-    Settings,       // ctrl+p 命令面板
-    SearchInput,    // 命令面干内嵌搜索
-    MultiSelect,    // 多选模式
-    SortMode,       // ctrl+l 排序模式
-    Form(FormData), // add / change 表单
+    /// 主界面
+    Main,
+    /// enter 选项菜单
+    TaskOptions,
+    /// ctrl+p 命令面板
+    Settings,
+    /// 命令面干内嵌搜索
+    SearchInput,
+    /// 多选模式
+    MultiSelect,
+    /// ctrl+l 排序模式
+    SortMode,
+    /// add / change 表单
+    Form(FormData),
+    /// 二次确认界面
     Confirm(ConfirmAction),
 }
 
+/// 编辑页面模式
 #[derive(Clone, Copy)]
 pub enum FormMode {
+    /// 添加模式
     Add,
+    /// 修改模式
     Change { no: usize, id: usize },
 }
 
-pub enum ConfirmAction {
-    DeleteAll(Vec<Task>),
-    Undo(Vec<Task>),
+/// 修改界面当前聚焦的输入框类型
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FormField {
+    Content,
+    Description,
+    Deadline,
+    Priority,
+}
+
+/// 实现输入框正向和反向的循环选择
+impl FormField {
+    pub fn next(self) -> Self {
+        match self {
+            FormField::Content => FormField::Description,
+            FormField::Description => FormField::Deadline,
+            FormField::Deadline => FormField::Priority,
+            FormField::Priority => FormField::Content,
+        }
+    }
+
+    pub fn back(self) -> Self {
+        match self {
+            FormField::Priority => FormField::Deadline,
+            FormField::Deadline => FormField::Description,
+            FormField::Description => FormField::Content,
+            FormField::Content => FormField::Priority,
+        }
+    }
 }
 
 /// description输入框的可见行数
 pub const DESC_VISIBLE_LINES: usize = 3;
+
+/// 需要二次确认的行为
+pub enum ConfirmAction {
+    /// 删除所有完成的任务
+    DeleteAll(Vec<Task>),
+    /// 恢复上一个操作
+    Undo(Vec<Task>),
+}
 
 /// add / change 表单数据
 ///
@@ -52,8 +97,8 @@ pub struct FormData {
     pub description: String,
     pub deadline: String,
     pub priority: Priority,
-    /// 当前聚焦的输入框下标: 0=content 1=description 2=deadline 3=priority
-    pub focus: usize,
+    /// 当前聚焦的输入框的类型
+    pub focus: FormField,
     /// content的编辑光标(字符下标)
     pub content_cursor: usize,
     /// deadline的编辑光标(字符下标)
@@ -75,7 +120,7 @@ impl FormData {
             description: String::new(),
             deadline: String::new(),
             priority: Priority::default(),
-            focus: 0,
+            focus: FormField::Content,
             content_cursor: 0,
             deadline_cursor: 0,
             desc_cursor: 0,
@@ -95,7 +140,7 @@ impl FormData {
         let mut form = FormData {
             mode: FormMode::Change { no, id: task.id() },
             priority: task.priority(),
-            focus: 0,
+            focus: FormField::Content,
             content_cursor: content.chars().count(),
             deadline_cursor: deadline.chars().count(),
             desc_cursor: description.chars().count(),

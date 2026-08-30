@@ -2,8 +2,10 @@
 //!
 //! 键盘事件包括：
 //! 上下键上下移动task列表的光标
+//! space修改任务是否完成
 //! enter键进入选中task的task_options界面
 //! ctrl+a添加
+//! ctrl+e编辑
 //! ctrl+f进入搜索
 //! ctrl+p进入settings_options可以搜索和多选
 //! 在多选界面上下键移动task列表的光标，用space选中一项，enter确认
@@ -29,6 +31,7 @@ use crate::todo::{
     SortBy, add_task, delete_alldone_apply, delete_alldone_preview, undo_task_apply,
     undo_task_preview,
 };
+use crate::tui::app::FormField;
 
 #[derive(Clone, Copy)]
 enum TaskAction {
@@ -449,17 +452,17 @@ fn handle_form(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     };
     match key.code {
         // 统一使用tab循环切换输入栏: content -> description -> deadline -> priority -> content
-        KeyCode::Tab => form.focus = (form.focus + 1) % 4,
-        KeyCode::BackTab => form.focus = (form.focus + 3) % 4,
+        KeyCode::Tab => form.focus = form.focus.next(),
+        KeyCode::BackTab => form.focus = form.focus.back(),
         // 方向键只用于移动光标: description栏在多行文本中移动(自动滚动/软换行)
-        KeyCode::Enter if form.focus == 1 => form.desc_insert('\n'),
-        KeyCode::Up if form.focus == 1 => form.desc_up(),
-        KeyCode::Down if form.focus == 1 => form.desc_down(),
-        KeyCode::Left if form.focus == 1 => form.desc_left(),
-        KeyCode::Right if form.focus == 1 => form.desc_right(),
-        KeyCode::Backspace if form.focus == 1 => form.desc_backspace(),
+        KeyCode::Enter if form.focus == FormField::Description => form.desc_insert('\n'),
+        KeyCode::Up if form.focus == FormField::Description => form.desc_up(),
+        KeyCode::Down if form.focus == FormField::Description => form.desc_down(),
+        KeyCode::Left if form.focus == FormField::Description => form.desc_left(),
+        KeyCode::Right if form.focus == FormField::Description => form.desc_right(),
+        KeyCode::Backspace if form.focus == FormField::Description => form.desc_backspace(),
         KeyCode::Char(c)
-            if form.focus == 1
+            if form.focus == FormField::Description
                 && !key
                     .modifiers
                     .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
@@ -467,14 +470,14 @@ fn handle_form(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
             form.desc_insert(c)
         }
         // priority栏使用左右键切换优先级
-        KeyCode::Right if form.focus == 3 => {
+        KeyCode::Right if form.focus == FormField::Priority => {
             form.priority = match form.priority {
                 Priority::High => Priority::Low,
                 Priority::Medium => Priority::High,
                 Priority::Low => Priority::Medium,
             };
         }
-        KeyCode::Left if form.focus == 3 => {
+        KeyCode::Left if form.focus == FormField::Priority => {
             form.priority = match form.priority {
                 Priority::High => Priority::Medium,
                 Priority::Medium => Priority::Low,
@@ -482,20 +485,20 @@ fn handle_form(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
             };
         }
         // content/deadline单行输入框: 左右键移动光标
-        KeyCode::Left if form.focus != 3 => {
+        KeyCode::Left if form.focus != FormField::Priority => {
             let (field, cursor) = single_field_mut(form);
             move_cursor_left(field, cursor);
         }
-        KeyCode::Right if form.focus != 3 => {
+        KeyCode::Right if form.focus != FormField::Priority => {
             let (field, cursor) = single_field_mut(form);
             move_cursor_right(field, cursor);
         }
-        KeyCode::Backspace if form.focus != 3 => {
+        KeyCode::Backspace if form.focus != FormField::Priority => {
             let (field, cursor) = single_field_mut(form);
             backspace_at_cursor(field, cursor);
         }
         KeyCode::Char(c)
-            if form.focus != 3
+            if form.focus != FormField::Priority
                 && !key
                     .modifiers
                     .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
@@ -508,11 +511,12 @@ fn handle_form(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 返回当前聚焦的单行输入框(content/deadline)的文本与光标(调用前需判断focus为0或2)
+/// 返回当前聚焦的单行输入框(content/deadline)的文本与光标(调用前需判断focus为Content或Deadline)
 fn single_field_mut(form: &mut FormData) -> (&mut String, &mut usize) {
     match form.focus {
-        0 => (&mut form.content, &mut form.content_cursor),
-        _ => (&mut form.deadline, &mut form.deadline_cursor),
+        FormField::Content => (&mut form.content, &mut form.content_cursor),
+        FormField::Deadline => (&mut form.deadline, &mut form.deadline_cursor),
+        _ => unreachable!(),
     }
 }
 

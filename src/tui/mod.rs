@@ -1,6 +1,6 @@
 //! TUI模块
 //!
-//! 模块声明和入口
+//! 模块声明和tui界面入口
 
 use std::time::Duration;
 
@@ -65,6 +65,7 @@ mod tests {
     use crate::task::{Priority, Task};
     use crate::test_helpers::TempGuard;
     use crate::todo::{SortBy, add_task, delete_task};
+    use crate::tui::app::FormField;
     use crate::{UserInterfaceTypes, tui::handler};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::backend::TestBackend;
@@ -367,11 +368,11 @@ mod tests {
         // 上下键不再切换栏位
         handler::handle_key(&mut app, key(KeyCode::Up));
         handler::handle_key(&mut app, key(KeyCode::Down));
-        assert_eq!(app.form().unwrap().focus, 0);
+        assert_eq!(app.form().unwrap().focus, FormField::Content);
 
         // tab切换到description,输入两行,左右键跨行移动光标
         handler::handle_key(&mut app, key(KeyCode::Tab));
-        assert_eq!(app.form().unwrap().focus, 1);
+        assert_eq!(app.form().unwrap().focus, FormField::Description);
         for c in "ab".chars() {
             handler::handle_key(&mut app, key(KeyCode::Char(c)));
         }
@@ -390,15 +391,15 @@ mod tests {
 
         // tab循环: deadline -> priority -> content
         handler::handle_key(&mut app, key(KeyCode::Tab));
-        assert_eq!(app.form().unwrap().focus, 2);
+        assert_eq!(app.form().unwrap().focus, FormField::Deadline);
         handler::handle_key(&mut app, key(KeyCode::Tab));
-        assert_eq!(app.form().unwrap().focus, 3);
+        assert_eq!(app.form().unwrap().focus, FormField::Priority);
         handler::handle_key(&mut app, key(KeyCode::Tab));
-        assert_eq!(app.form().unwrap().focus, 0);
+        assert_eq!(app.form().unwrap().focus, FormField::Content);
 
         // priority栏左右键切换优先级
         handler::handle_key(&mut app, key(KeyCode::BackTab));
-        assert_eq!(app.form().unwrap().focus, 3);
+        assert_eq!(app.form().unwrap().focus, FormField::Priority);
         handler::handle_key(&mut app, key(KeyCode::Right));
         assert_eq!(app.form().unwrap().priority, Priority::Medium);
     }

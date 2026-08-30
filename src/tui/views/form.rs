@@ -11,6 +11,8 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 
+use crate::tui::app::FormField;
+
 use super::super::app::{App, AppState, DESC_VISIBLE_LINES, FormData, FormMode};
 use super::super::theme::THEME;
 use super::super::ui::{centered_rect, display_width, input_window, priority_style};
@@ -62,7 +64,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         form.content_cursor,
         None,
         content_area,
-        form.focus == 0,
+        form.focus == FormField::Content,
     );
     draw_description_field(frame, form, desc_area);
     draw_text_field(
@@ -72,7 +74,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         form.deadline_cursor,
         Some("2000-01-01 or 2000-01-01T12:00:00"),
         deadline_area,
-        form.focus == 2,
+        form.focus == FormField::Deadline,
     );
     draw_priority_field(frame, form, priority_area);
 
@@ -136,7 +138,7 @@ fn draw_text_field(
 ///
 /// 文本按显式\n分行,超宽部分软换行显示;内容超过三行时随光标滚动,保持可见窗口高度不变
 fn draw_description_field(frame: &mut Frame, form: &mut FormData, area: Rect) {
-    let focused = form.focus == 1;
+    let focused = form.focus == FormField::Description;
     // 文本区宽度随布局变化,渲染时更新供编辑逻辑计算软换行
     let text_width = (area.width as usize).saturating_sub(LABEL_WIDTH as usize);
     form.set_desc_wrap_width(text_width);
@@ -196,7 +198,7 @@ fn draw_description_field(frame: &mut Frame, form: &mut FormData, area: Rect) {
 
 /// 绘制优先级选择框,使用左右键切换
 fn draw_priority_field(frame: &mut Frame, form: &FormData, area: Rect) {
-    let focused = form.focus == 3;
+    let focused = form.focus == FormField::Priority;
     let arrow_style = if focused {
         Style::default().fg(THEME.peach)
     } else {
