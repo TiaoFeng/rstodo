@@ -149,10 +149,14 @@ pub fn undo(store: &TaskStore, yes: bool) -> Result<(), AppError> {
         Err(e) => return Err(e),
     };
     println!("The list will be restored to:");
-    println!(
-        "{}",
-        list_table(&with_display_no(&backup_tasks), Utc::now()) // 现在打印需要传入&[(usize, Task)]
-    );
+    if backup_tasks.is_empty() {
+        println!("+_+ No tasks")
+    } else {
+        println!(
+            "{}",
+            list_table(&with_display_no(&backup_tasks), Utc::now()) // 现在打印需要传入&[(usize, Task)]
+        );
+    }
 
     if !yes && !confirm(&mut io::stdin().lock(), "Confirm undo? [y/N] ") {
         println!(">_< Undo cancelled.");
@@ -307,6 +311,38 @@ mod commands_test {
                 )
                 .is_err()
             );
+            assert_eq!(store.load().unwrap().len(), 3);
+        }
+
+        /// 备份文件不可写，直接抛出错误
+        ///
+        /// 利用权限系统，无法创建可以读写的句柄
+        #[cfg(unix)]
+        #[test]
+        fn test_backup_not_writable() {
+            use std::{fs, os::unix::fs::PermissionsExt};
+            let guard = TempGuard::new("test_backup_not_writable");
+            let store = TaskStore::new(Some(guard.main_path()));
+
+            assert!(add("test1".to_string(), &store, None, None, None).is_ok());
+            assert!(add("test2".to_string(), &store, None, None, None).is_ok());
+
+            let no_permission = 0o200;
+            let std_permission = 0o644;
+            fs::set_permissions(
+                store.backup_path(),
+                fs::Permissions::from_mode(no_permission),
+            )
+            .unwrap();
+            assert!(add("test3".to_string(), &store, None, None, None).is_err());
+            assert_eq!(store.load().unwrap().len(), 2);
+
+            fs::set_permissions(
+                store.backup_path(),
+                fs::Permissions::from_mode(std_permission),
+            )
+            .unwrap();
+            assert!(add("test3".to_string(), &store, None, None, None).is_ok());
             assert_eq!(store.load().unwrap().len(), 3);
         }
     }
@@ -690,6 +726,16 @@ mod commands_test {
             assert_eq!(store.load().unwrap()[1].content(), "task2");
             assert_eq!(store.load().unwrap()[2].content(), "task3");
             assert_eq!(store.load().unwrap().len(), 3);
+        }
+
+        #[test]
+        fn test_undo_to_empty() {
+            let guard = TempGuard::new("test_undo_to_empty");
+            let store = TaskStore::new(Some(guard.main_path()));
+
+            add("undo_test_content1".to_string(), &store, None, None, None).unwrap();
+            undo(&store, true).unwrap();
+            assert_eq!(store.load().unwrap().len(), 0);
         }
     }
 
