@@ -22,7 +22,6 @@ use super::app::{
     move_cursor_left, move_cursor_right,
 };
 use super::views::{settings_options, task_options};
-use crate::UserInterfaceTypes::Tui;
 use crate::error::AppError;
 use crate::task::Priority;
 use crate::time::parse_deadline_input;
@@ -112,7 +111,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         AppState::Confirm(_) => handle_confirm(app, key),
     };
     if let Err(err) = result {
-        app.set_message(format!(":( {}", err.with_ui(Tui)));
+        app.set_message(format!(":( {}", err.pack_to_tui_err()));
     }
 }
 
@@ -538,7 +537,7 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
         input => match parse_deadline_input(input) {
             Ok(d) => Some(d),
             Err(err) => {
-                app.set_message(format!(":( {}", err.with_ui(Tui)));
+                app.set_message(format!(":( {}", err.pack_to_tui_err()));
                 return Ok(());
             }
         },

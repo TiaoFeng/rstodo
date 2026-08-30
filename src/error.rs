@@ -1,48 +1,59 @@
 //! 错误模块
 //!
 //! 定义了可能出现的错误类型，并实现了错误的输出trait
-use crate::UserInterfaceTypes;
 use std::{error::Error, fmt, path::Path};
 
-/// 项目错误类型枚举
+/// Tui重新包装Error
 ///
-/// 新增ui字段
-pub struct UiError<'a> {
-    error: &'a AppError,
-    ui_type: UserInterfaceTypes,
-}
+/// 元组
+/// - error AppError错误
+pub struct TuiError<'a>(&'a AppError);
 
 /// 项目错误类型枚举
 #[derive(Debug)]
 pub enum AppError {
+    // 文件损毁
     Corrupted {
         path: String,
         source: serde_json::Error,
     },
+    // 非法的Content
     InvalidContent {
         input: String,
     },
+    // 非法的Description
     InvalidDescription {
         input: String,
     },
+    // 非法的Deadline
     InvalidDeadline {
         input: String,
     },
+    // IO操作错误
     Io {
         operation: &'static str,
         path: String,
         source: std::io::Error,
     },
+    // 时间转换错误
     InvalidLocalTime,
+    // 没有要修改的内容
     NothingToChange,
+    // 没有要删除的内容
     NothingToDelete,
+    // 没有要恢复的内容
     NothingToUndo,
+    // 输入序号在Task列表中未找到
     TaskNotFound {
         no: usize,
     },
+    // 删除参数冲突
     DeleteConflictOperations,
+    // 删除文件预览与现状冲突
     DeleteConflict,
+    // 恢复文件预览与现状冲突
     UndoConflict,
+    // Tui渲染相关错误，仅供Tui使用
     Tui(std::io::Error),
 }
 
@@ -56,45 +67,65 @@ pub fn io_err(operation: &'static str, path: &Path, err: std::io::Error) -> AppE
 }
 
 impl AppError {
-    pub fn with_ui(&self, ui_type: UserInterfaceTypes) -> UiError<'_> {
-        UiError {
-            error: self,
-            ui_type,
-        }
+    /// 为Tui重新包装错误
+    pub fn pack_to_tui_err(&self) -> TuiError<'_> {
+        TuiError(self)
     }
 
-    fn fmt_full(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    /// 错误信息输出
+    ///
+    /// 使用is_short开关控制是否输出短小的错误信息提示
+    fn fmt_with(&self, f: &mut fmt::Formatter<'_>, is_short: bool) -> fmt::Result {
         match self {
             AppError::Corrupted { path, source } => {
                 write!(f, "task file '{}' is corrupted: {}", path, source)
             }
             AppError::InvalidContent { input } => {
-                write!(
-                    f,
-                    "Invalid content: '{}'. The 'content' field cannot be left blank.",
-                    input
-                )
+                if is_short {
+                    write!(f, "The 'content' field cannot be left blank.")
+                } else {
+                    write!(
+                        f,
+                        "Invalid content: '{}'. The 'content' field cannot be left blank.",
+                        input
+                    )
+                }
             }
             AppError::InvalidDeadline { input } => {
-                write!(
-                    f,
-                    "Invalid deadline format '{}', expected {{%Y-%m-%d}} or {{%Y-%m-%dT%H:%M:%S}}. Example: 2000-1-1 or 2000-1-1T12:00:00",
-                    input
-                )
+                if is_short {
+                    write!(
+                        f,
+                        "Invalid deadline. Example: 2000-1-1 or 2000-1-1T12:00:00",
+                    )
+                } else {
+                    write!(
+                        f,
+                        "Invalid deadline format '{}', expected {{%Y-%m-%d}} or {{%Y-%m-%dT%H:%M:%S}}. Example: 2000-1-1 or 2000-1-1T12:00:00",
+                        input
+                    )
+                }
             }
             AppError::InvalidDescription { input } => {
-                write!(
-                    f,
-                    "Invalid description: '{}'. The 'description' field cannot be left blank.",
-                    input
-                )
+                if is_short {
+                    write!(f, "The 'description' field cannot be left blank.")
+                } else {
+                    write!(
+                        f,
+                        "Invalid description: '{}'. The 'description' field cannot be left blank.",
+                        input
+                    )
+                }
             }
             AppError::Io {
                 operation,
                 path,
                 source,
             } => {
-                write!(f, "failed to {} '{}': {}", operation, path, source)
+                if is_short {
+                    write!(f, "failed to {}", operation)
+                } else {
+                    write!(f, "failed to {} '{}': {}", operation, path, source)
+                }
             }
             AppError::InvalidLocalTime => {
                 write!(
@@ -103,7 +134,11 @@ impl AppError {
                 )
             }
             AppError::NothingToChange => {
-                write!(f, "Nothing to change, Please enter one or more subcommands")
+                if is_short {
+                    write!(f, "Nothing to change")
+                } else {
+                    write!(f, "Nothing to change, Please enter one or more subcommands")
+                }
             }
             AppError::NothingToUndo => {
                 write!(f, "Nothing to undo")
@@ -112,83 +147,35 @@ impl AppError {
                 write!(f, "Nothing to delete")
             }
             AppError::TaskNotFound { no } => {
-                write!(
-                    f,
-                    "Task not found: no {}, run `list` to check current numbers",
-                    no
-                )
+                if is_short {
+                    write!(f, "Task not found: no {}", no)
+                } else {
+                    write!(
+                        f,
+                        "Task not found: no {}, run `list` to check current numbers",
+                        no
+                    )
+                }
             }
             AppError::UndoConflict => {
-                write!(
-                    f,
-                    "Task list changed since the undo preview, please run 'undo' again",
-                )
+                if is_short {
+                    write!(f, "Task list changed, please run 'undo' again",)
+                } else {
+                    write!(
+                        f,
+                        "Task list changed since the undo preview, please run 'undo' again",
+                    )
+                }
             }
             AppError::DeleteConflict => {
-                write!(
-                    f,
-                    "Task list changed since the delete preview, please run 'delete alldone' again"
-                )
-            }
-            AppError::DeleteConflictOperations => {
-                write!(
-                    f,
-                    "You cannot enter both a serial number and 'alldone' at the same time."
-                )
-            }
-            AppError::Tui(err) => {
-                write!(f, "Something wrong: {}", err)
-            }
-        }
-    }
-
-    fn fmt_short(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AppError::Corrupted { path, source } => {
-                write!(f, "task file '{}' is corrupted: {}", path, source)
-            }
-            AppError::InvalidContent { input: _ } => {
-                write!(f, "The 'content' field cannot be left blank.")
-            }
-            AppError::InvalidDeadline { input: _ } => {
-                write!(
-                    f,
-                    "Invalid deadline. Example: 2000-1-1 or 2000-1-1T12:00:00",
-                )
-            }
-            AppError::InvalidDescription { input: _ } => {
-                write!(f, "The 'description' field cannot be left blank.",)
-            }
-            AppError::Io {
-                operation,
-                path: _,
-                source: _,
-            } => {
-                write!(f, "failed to {}", operation)
-            }
-            AppError::InvalidLocalTime => {
-                write!(
-                    f,
-                    "Time Conversion Error. It may be due to daylight saving time."
-                )
-            }
-            AppError::NothingToChange => {
-                write!(f, "Nothing to change")
-            }
-            AppError::NothingToUndo => {
-                write!(f, "Nothing to undo")
-            }
-            AppError::NothingToDelete => {
-                write!(f, "Nothing to delete")
-            }
-            AppError::TaskNotFound { no } => {
-                write!(f, "Task not found: no {}", no)
-            }
-            AppError::UndoConflict => {
-                write!(f, "Task list changed, please run undo alldone again",)
-            }
-            AppError::DeleteConflict => {
-                write!(f, "Task list changed, please run delete alldone again")
+                if is_short {
+                    write!(f, "Task list changed, please run 'delete alldone' again")
+                } else {
+                    write!(
+                        f,
+                        "Task list changed since the delete preview, please run 'delete alldone' again"
+                    )
+                }
             }
             AppError::DeleteConflictOperations => {
                 write!(
@@ -203,25 +190,30 @@ impl AppError {
     }
 }
 
+/// 为AppError容纳std:io:Error
+///
+/// 装下Tui渲染产生的错误
 impl From<std::io::Error> for AppError {
     fn from(value: std::io::Error) -> Self {
         AppError::Tui(value)
     }
 }
 
-/// 为 `AppError` 实现 `fmt::Display` trait，用于定义每种错误的输出内容
+/// 为 `AppError` 实现 `fmt::Display` trait
+///
+/// cli走AppError的默认输出，错误信息为长
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.fmt_full(f)
+        self.fmt_with(f, false)
     }
 }
 
-impl fmt::Display for UiError<'_> {
+/// 为`TuiError`实现`fmt::Display` trait
+///
+/// 重新包装后的Tui错误信息走短的输出
+impl fmt::Display for TuiError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.ui_type {
-            UserInterfaceTypes::Cli => self.error.fmt_full(f),
-            UserInterfaceTypes::Tui => self.error.fmt_short(f),
-        }
+        self.0.fmt_with(f, true)
     }
 }
 
@@ -240,6 +232,7 @@ impl Error for AppError {
     }
 }
 
+/// 单元测试
 #[cfg(test)]
 mod error_test {
     use super::*;
@@ -335,6 +328,78 @@ mod error_test {
             AppError::DeleteConflictOperations.to_string(),
             "You cannot enter both a serial number and 'alldone' at the same time."
         )
+    }
+
+    #[test]
+    fn test_tui_display() {
+        let src = create_io_error();
+        let io = AppError::Io {
+            operation: "write to file",
+            path: "test1.json".to_string(),
+            source: src,
+        };
+        assert_eq!(io.pack_to_tui_err().to_string(), "failed to write to file");
+
+        assert_eq!(
+            AppError::InvalidContent {
+                input: "   ".to_string()
+            }
+            .pack_to_tui_err()
+            .to_string(),
+            "The 'content' field cannot be left blank."
+        );
+
+        assert_eq!(
+            AppError::InvalidDescription {
+                input: "  ".to_string()
+            }
+            .pack_to_tui_err()
+            .to_string(),
+            "The 'description' field cannot be left blank."
+        );
+
+        assert_eq!(
+            AppError::InvalidDeadline {
+                input: "ab-cd-ef".to_string()
+            }
+            .pack_to_tui_err()
+            .to_string(),
+            "Invalid deadline. Example: 2000-1-1 or 2000-1-1T12:00:00"
+        );
+
+        assert_eq!(
+            AppError::NothingToChange.pack_to_tui_err().to_string(),
+            "Nothing to change"
+        );
+
+        assert_eq!(
+            AppError::TaskNotFound { no: 1 }
+                .pack_to_tui_err()
+                .to_string(),
+            "Task not found: no 1"
+        );
+
+        assert_eq!(
+            AppError::UndoConflict.pack_to_tui_err().to_string(),
+            "Task list changed, please run 'undo' again"
+        );
+
+        assert_eq!(
+            AppError::DeleteConflict.pack_to_tui_err().to_string(),
+            "Task list changed, please run 'delete alldone' again"
+        );
+
+        assert_eq!(
+            AppError::Tui(create_io_error())
+                .pack_to_tui_err()
+                .to_string(),
+            "An error occurred in tui: no such file"
+        );
+
+        assert_eq!(
+            AppError::NothingToUndo.pack_to_tui_err().to_string(),
+            "Nothing to undo"
+        );
     }
 
     #[test]
