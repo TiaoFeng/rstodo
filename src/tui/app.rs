@@ -67,6 +67,10 @@ pub struct App<'a> {
     pub message_time: Option<Instant>,
     /// 搜索输入框的编辑光标(字符下标)
     pub search_cursor: usize,
+    /// 详情面板的垂直滚动偏移(显示行数)
+    pub details_scroll: usize,
+    /// 详情面板每次翻页的行数(渲染时更新)
+    pub details_page: usize,
     pub should_quit: bool,
 }
 
@@ -94,6 +98,8 @@ impl<'a> App<'a> {
             message: None,
             message_time: None,
             search_cursor: 0,
+            details_scroll: 0,
+            details_page: 10,
             should_quit: false,
         };
         app.consume_notice();
@@ -111,6 +117,8 @@ impl<'a> App<'a> {
             _ => None,
         };
         self.list_state.select(selected);
+        // 任务列表刷新后详情面板回到顶部
+        self.details_scroll = 0;
         Ok(())
     }
 
@@ -125,6 +133,8 @@ impl<'a> App<'a> {
             .selected()
             .map_or(0, |i| (i + len - 1) % len);
         self.list_state.select(Some(i));
+        // 切换选中任务后详情面板回到顶部
+        self.details_scroll = 0;
     }
 
     /// 光标下移一项(循环)
@@ -135,6 +145,8 @@ impl<'a> App<'a> {
         }
         let i = self.list_state.selected().map_or(0, |i| (i + 1) % len);
         self.list_state.select(Some(i));
+        // 切换选中任务后详情面板回到顶部
+        self.details_scroll = 0;
     }
 
     /// 返回当前选中的(序号, 任务)

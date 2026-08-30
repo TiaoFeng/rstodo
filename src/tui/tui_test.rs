@@ -188,6 +188,44 @@ mod tests {
         assert!(app.form().is_none());
     }
 
+    /// 详情面板pgup/pgdn翻页查看长description,切换选中任务后回到顶部
+    #[test]
+    fn details_panel_pgup_pgdn_scroll() {
+        let guard = TempGuard::new("tui_details_scroll");
+        let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Tui);
+        let long_desc = (0..40)
+            .map(|i| format!("description line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        add_task(&store, "long".to_string(), Some(long_desc), None, None).unwrap();
+        add_task(&store, "task2".to_string(), None, None, None).unwrap();
+        let mut app = App::new(&store).unwrap();
+
+        render(&mut app); // 120x35: 详情面板可见25行
+        assert_eq!(app.details_page, 25);
+
+        // pgdn向下翻页,渲染时夹紧到最大偏移(45行内容 - 25行可见)
+        handler::handle_key(&mut app, key(KeyCode::PageDown));
+        render(&mut app);
+        assert_eq!(app.details_scroll, 20);
+
+        // pgup回到顶部
+        handler::handle_key(&mut app, key(KeyCode::PageUp));
+        assert_eq!(app.details_scroll, 0);
+
+        // 翻页后切换选中任务,滚动回到顶部
+        handler::handle_key(&mut app, key(KeyCode::PageDown));
+        render(&mut app);
+        assert!(app.details_scroll > 0);
+        handler::handle_key(&mut app, key(KeyCode::Down));
+        assert_eq!(app.details_scroll, 0);
+
+        // 短description任务翻页不产生滚动
+        handler::handle_key(&mut app, key(KeyCode::PageDown));
+        render(&mut app);
+        assert_eq!(app.details_scroll, 0);
+    }
+
     /// description多行编辑: enter换行/自动滚动/上下移动光标/退格合并行
     #[test]
     fn test_description_multiline_edit() {

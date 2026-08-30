@@ -13,6 +13,7 @@
 //! 在form界面输入新增或改变task的信息后ctrl+s保存更改
 //! 在主界面按ctrl+l选择排序模式，按再按p（按优先级排序），d（按截止日期排序），n（恢复默认顺序）
 //! 在主界面按space切换选中task的done/undone
+//! 在主界面按pgup/pgdn翻页查看选中task的详情
 //! 在主界面按ctrl+e进入选中task的change表单
 //! 在主界面按r刷新列表
 //! 按q或ctrl+c退出tui
@@ -162,6 +163,13 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
         KeyCode::Char('q') => app.should_quit = true,
         KeyCode::Up | KeyCode::Char('k') => app.select_back(),
         KeyCode::Down | KeyCode::Char('j') => app.select_next(),
+        // pgup/pgdn翻页查看详情面板的长description
+        KeyCode::PageUp => {
+            app.details_scroll = app.details_scroll.saturating_sub(app.details_page.max(1));
+        }
+        KeyCode::PageDown => {
+            app.details_scroll = app.details_scroll.saturating_add(app.details_page.max(1));
+        }
         KeyCode::Enter => {
             if app.selected_task().is_some() {
                 app.state = AppState::TaskOptions;

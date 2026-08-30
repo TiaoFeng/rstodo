@@ -10,6 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, Paragraph, Wrap};
 
 use super::super::app::{App, AppState};
+use super::super::text::wrap_rows;
 use super::super::theme::THEME;
 use super::super::ui::priority_style;
 use crate::time::to_local_time;
@@ -214,7 +215,9 @@ fn draw_tasks(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 /// 右下角: 选中task的细节
-fn draw_details(frame: &mut Frame, app: &App, area: Rect) {
+///
+/// description可能很长,超出可见高度的部分隐藏,使用pgup/pgdn翻页查看
+fn draw_details(frame: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::bordered()
         .title(Span::styled(" DETAILS ", THEME.title()))
         .border_style(Style::default().fg(THEME.border))
@@ -271,9 +274,29 @@ fn draw_details(frame: &mut Frame, app: &App, area: Rect) {
             }
         }
     }
+
+    // 计算软换行后的总显示行数,渲染时夹紧滚动偏移,避免翻页过头后出现空白
+    let inner = block.inner(area);
+    app.details_page = inner.height as usize;
+    let total_rows: usize = lines
+        .iter()
+        .map(|line| {
+            let text: String = line
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect();
+            wrap_rows(&text, inner.width as usize).len()
+        })
+        .sum();
+    app.details_scroll = app
+        .details_scroll
+        .min(total_rows.saturating_sub(app.details_page));
+
     let details = Paragraph::new(lines)
         .block(block)
-        .wrap(Wrap { trim: false });
+        .wrap(Wrap { trim: false })
+        .scroll((app.details_scroll as u16, 0));
     frame.render_widget(details, area);
 }
 
@@ -295,7 +318,7 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
 
     let hints = match app.state {
         AppState::Main => {
-            " ↑/↓ move  space done  ^A add  ^D delete  ^E change  ^P cmds  ^F find  ^L sort"
+            " ↑/↓ move  space done  ^A add  ^D delete  ^E change  ^P cmds  ^F find  ^L sort  pgup/pgdn scroll"
         }
         AppState::TaskOptions | AppState::Settings => " ↑/↓ move  enter select  esc back",
         AppState::SearchInput => " type keyword  enter apply  esc back",
