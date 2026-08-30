@@ -16,6 +16,7 @@ use io::storage::TaskStore;
 use std::error::Error;
 
 use crate::error::AppError;
+use crate::io::storage::recovered_from_backup_msg;
 use crate::task::Priority;
 use crate::todo::SortBy;
 
@@ -26,7 +27,7 @@ struct Cli {
     #[arg(long, global = true)]
     file: Option<String>,
     #[command(subcommand)]
-    command: Option<Commands>,
+    command: Option<Commands>, // 子命令是可选的，可以不输入进入tui
 }
 
 /// 子命令结构体
@@ -82,6 +83,7 @@ enum Commands {
     },
 }
 
+/// 用户界面枚举
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum UserInterfaceTypes {
     Cli,
@@ -123,6 +125,13 @@ fn main() {
     } else {
         tui::run(&store)
     };
+    // 如果UI为CLI在指令执行完成后输出储存的提示
+    if ui_type == UserInterfaceTypes::Cli && store.take_notice().is_some() {
+        eprintln!(
+            "{}",
+            recovered_from_backup_msg(store.backup_path(), ui_type)
+        );
+    }
     if let Err(apperr) = result {
         eprintln!("Error: {}", apperr);
         let mut source = apperr.source();

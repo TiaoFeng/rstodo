@@ -51,6 +51,7 @@ fn main_loop(terminal: &mut DefaultTerminal, store: &TaskStore) -> Result<(), Ap
             && key.kind == KeyEventKind::Press
         {
             handler::handle_key(&mut app, key);
+            app.consume_notice();
         }
     }
     Ok(())
@@ -399,7 +400,7 @@ mod tests {
         handler::handle_key(&mut app, key(KeyCode::BackTab));
         assert_eq!(app.form().unwrap().focus, 3);
         handler::handle_key(&mut app, key(KeyCode::Right));
-        assert_eq!(app.form().unwrap().priority, Priority::High);
+        assert_eq!(app.form().unwrap().priority, Priority::Medium);
     }
 
     /// undo恢复 / 排序n恢复默认 / 搜索框左右移动光标

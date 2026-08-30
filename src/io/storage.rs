@@ -7,6 +7,7 @@
 use crate::UserInterfaceTypes;
 use crate::error::{AppError, io_err};
 use crate::task::Task;
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -20,19 +21,29 @@ enum Origin {
     Backup,
 }
 
+/// 存储通知供UI使用take_notice调用并打印
+#[derive(Debug, PartialEq)]
+pub enum StorageNotice {
+    RecoveredFromBackup,
+}
+
 /// 核心tasks结构体，负责保存文件地址，实现公开的读写方法
 ///
 /// 包括字段：
 /// - main 主文件地址
 /// - backup 备份文件地址
+/// - types UI类型字段
+/// - notice 通知（使用RefCell创造内部可变性，不改变结构体整体可变性）
 pub struct TaskStore {
     main: PathBuf,
     backup: PathBuf,
     types: UserInterfaceTypes,
+    notice: RefCell<Option<StorageNotice>>,
 }
 
 impl TaskStore {
     /// 用于初始化创建TaskStore实例
+    ///
     /// ### Args:
     /// custom: `Option<String>` 用户自定义文件保存地址
     pub fn new(custom: Option<String>, types: UserInterfaceTypes) -> Self {
@@ -43,6 +54,7 @@ impl TaskStore {
             main,
             backup: PathBuf::from(backup),
             types,
+            notice: RefCell::new(None), // 新增时消息为空
         }
     }
 
@@ -69,27 +81,51 @@ impl TaskStore {
         self.types
     }
 
+    /// 读取并清空当前存储通知（仅供单次消费）
+    pub fn take_notice(&self) -> Option<StorageNotice> {
+        self.notice.borrow_mut().take()
+    }
+
     /// Tasks只读方法
+    ///
     /// 逻辑：
-    /// 1.若主文件正常，只读主文件
-    /// 2.若主文件不存在，走load_backup_fallback函数尝试读取备份文件
-    /// 3.若主文件为空文件，走load_backup_fallback函数尝试读取备份文件
-    /// 4.若主文件损坏，走load_backup_fallback函数尝试读取备份文件，若备份文件为空或损坏，报错而不覆盖
+    /// - 若主文件正常（可以正常解析tasks，包含`[]`），只读主文件
+    /// - 若主文件不存在，走load_backup_fallback函数尝试读取备份文件
+    /// - 若主文件为0字节，走load_backup_fallback函数尝试读取备份文件
+    /// - 若主文件损坏，走load_backup_fallback函数尝试读取备份文件，若备份文件为0字节 |`[]` | 损坏，报错而不覆盖
     pub fn load(&self) -> Result<Vec<Task>, AppError> {
         let file = match open_read(self.main_path()) {
             Ok(file) => file,
             Err(err) if is_not_found(&err) => {
-                return load_backup_fallback(self.backup_path(), self.types);
+                // 将原有load_backup函数输出的警告上升到此处保存notice
+                let tasks_from_backup = load_backup_fallback(self.backup_path())?;
+                if !tasks_from_backup.is_empty() {
+                    // 从备份中读取，且读取的task不是空的，输出提示
+                    // 如果备份的task是空的，没有必要提示
+                    *self.notice.borrow_mut() = Some(StorageNotice::RecoveredFromBackup);
+                }
+                return Ok(tasks_from_backup);
             }
             Err(e) => return Err(e),
         };
         lock_share(&file, self.main_path())?;
         match read_task_from(&file, self.main_path()) {
             Ok(Some(tasks)) => Ok(tasks),
-            Ok(None) => load_backup_fallback(self.backup_path(), self.types),
+            Ok(None) => {
+                // 从备份中读取，且读取的task不是空的，输出提示
+                let tasks_from_backup = load_backup_fallback(self.backup_path())?;
+                if !tasks_from_backup.is_empty() {
+                    *self.notice.borrow_mut() = Some(StorageNotice::RecoveredFromBackup);
+                }
+                Ok(tasks_from_backup)
+            }
             Err(AppError::Corrupted { path, source }) => {
-                match load_backup_fallback(self.backup_path(), self.types) {
-                    Ok(tasks) if !tasks.is_empty() => Ok(tasks),
+                match load_backup_fallback(self.backup_path()) {
+                    Ok(tasks) if !tasks.is_empty() => {
+                        // 从备份中读取，且读取的task不是空的，输出提示
+                        *self.notice.borrow_mut() = Some(StorageNotice::RecoveredFromBackup);
+                        Ok(tasks)
+                    }
                     _ => Err(AppError::Corrupted { path, source }),
                 }
             }
@@ -100,8 +136,8 @@ impl TaskStore {
     /// Tasks更新方法，同步更新备份
     ///
     /// 逻辑：
-    /// 1.使用load_for_update函数读取(来源，任务列表)
-    /// 2.若读取的是主文件，将主文件备份到副文件，之后再将操作覆盖到主文件
+    /// - 使用load_for_update函数读取(来源，任务列表)
+    /// - 若读取的是主文件，将主文件备份到副文件，之后再将操作覆盖到主文件
     pub fn update_with_backup(
         &self,
         f: impl FnOnce(&mut Vec<Task>) -> Result<(), AppError>,
@@ -121,7 +157,7 @@ impl TaskStore {
 
     /// Task更新方法的实现
     ///
-    /// 通过refresh_backup判断是否执行刷新动作
+    /// 通过内部的bool开关refresh_backup判断是否执行刷新动作
     fn update(
         &self,
         f: impl FnOnce(&mut Vec<Task>) -> Result<(), AppError>,
@@ -135,13 +171,12 @@ impl TaskStore {
         lock_private(&main, self.main_path())?;
         lock_private(&backup, self.backup_path())?;
 
-        let (origin, mut tasks) = load_for_update(
-            &main,
-            self.main_path(),
-            &backup,
-            self.backup_path(),
-            self.types,
-        )?;
+        let (origin, mut tasks) =
+            load_for_update(&main, self.main_path(), &backup, self.backup_path())?;
+        // 从备份中读取，且读取的task不是`[]`，输出从备份中恢复的提示
+        if origin == Origin::Backup && !tasks.is_empty() {
+            *self.notice.borrow_mut() = Some(StorageNotice::RecoveredFromBackup);
+        }
         f(&mut tasks)?;
         if refresh_backup && origin == Origin::Main {
             copy_main_to_backup(&main, self.main_path(), &backup, self.backup_path())?;
@@ -156,17 +191,19 @@ impl TaskStore {
     }
 
     /// 只读备份文件方法
+    ///
     /// 调用load_backup_strict只读备份文件
     pub fn load_backup(&self) -> Result<Vec<Task>, AppError> {
         load_backup_strict(self.backup_path())
     }
 
     /// 提取备份文件并覆盖主文件
+    ///
     /// 将备份文件提取，并通过restore_main_from_backup覆盖到主文件，以实现undo
     ///
-    /// snapshot，用于对比undo预览的快照与目前进行操作的backup文件，以免被篡改
-    ///
-    /// 若snapshot与目前的备份文件不匹配，返回错误UndoConflict
+    /// snapshot：
+    /// - 用于对比undo预览的快照与目前进行操作的backup文件，以免被篡改
+    /// - 若snapshot与目前的备份文件不匹配，返回错误UndoConflict
     pub fn restore_backup(&self, snapshot: &[Task]) -> Result<(), AppError> {
         create_dir(self.main_path())?;
         let main = open_read_write(self.main_path())?;
@@ -185,6 +222,9 @@ impl TaskStore {
 
 // tier1
 /// 将读取的字符串切片使用serde_json序列化为`Vec<Task>`
+///
+/// 只有在文件0字节时返回`Ok(None)`
+/// 其余都尝试解析json
 fn parse_tasks(text: &str, path: &Path) -> Result<Option<Vec<Task>>, AppError> {
     if text.trim().is_empty() {
         return Ok(None);
@@ -220,12 +260,20 @@ fn is_not_found(err: &AppError) -> bool {
 }
 
 /// 从备份中恢复数据的警告信息
-fn warn_recovered_from_backup(backup_path: &Path, types: UserInterfaceTypes) {
-    if types == UserInterfaceTypes::Cli {
-        eprintln!(
-            ">_< Warning: main task file is missing or corrupted, loaded data from backup file '{}'. Changes since the last successful save may be lost.",
-            backup_path.display()
-        )
+///
+/// - cli：长消息
+/// - tui：短消息
+pub fn recovered_from_backup_msg(backup_path: &Path, types: UserInterfaceTypes) -> String {
+    match types {
+        UserInterfaceTypes::Cli => {
+            format!(
+                ">_< Warning: main task file is missing or corrupted, loaded data from backup file '{}'. Changes since the last successful save may be lost.",
+                backup_path.display()
+            )
+        }
+        UserInterfaceTypes::Tui => {
+            ">_< Warning: Restoring from a backup may result in data loss".to_string()
+        }
     }
 }
 
@@ -237,7 +285,7 @@ fn create_dir(path: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 传入文件`&Path`，打开并返回只读的文件句柄
+/// 传入文件`&Path`，打开并返回只读的文件句柄，不创建
 fn open_read(path: &Path) -> Result<File, AppError> {
     let file = File::options()
         .read(true)
@@ -249,7 +297,7 @@ fn open_read(path: &Path) -> Result<File, AppError> {
     Ok(file)
 }
 
-/// 传入文件`&Path`，打开并返回可读写的文件句柄
+/// 传入文件`&Path`，打开并返回可读写的文件句柄，可创建
 fn open_read_write(path: &Path) -> Result<File, AppError> {
     let file = File::options()
         .read(true)
@@ -275,7 +323,7 @@ fn lock_share(file: &File, path: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 读取传入的`&File`句柄中的文件内容，返回文件全文的`String`字符串，用于序列化读取
+/// 预读取传入的`&File`句柄中的文件内容，返回文件全文的`String`字符串，用于序列化读取
 fn read_string(file: &File, path: &Path) -> Result<String, AppError> {
     let mut f = file
         .try_clone()
@@ -304,6 +352,8 @@ fn overwrite(file: &File, data: &[u8], path: &Path) -> Result<(), AppError> {
 
 // tier3
 /// 使用read_string读取文件的内容，并通过parse_tasks序列化为`Option<Vec<Task>>`返回
+///
+/// 由于parse_tasks函数的特性，只有在file为0字节时返回为`Ok(None)`
 fn read_task_from(file: &File, path: &Path) -> Result<Option<Vec<Task>>, AppError> {
     let text = read_string(file, path)?;
     let tasks = parse_tasks(&text, path)?;
@@ -318,7 +368,7 @@ fn copy_main_to_backup(
     backup_path: &Path,
 ) -> Result<(), AppError> {
     let tasks = read_task_from(main, main_path)?;
-    // 要注意，如果tasks.json文件解析出来是空的(.trim().is_empty())，tasks = None
+    // 要注意，若tasks.json文件解析出来是0比特，有tasks = None
     // 此时应该往bak文件写入[]的空列表
     let data = serialize_tasks(tasks.as_deref().unwrap_or(&[]), main_path)?;
     overwrite(backup, data.as_bytes(), backup_path)
@@ -328,31 +378,24 @@ fn copy_main_to_backup(
 /// 从主文件或备份中读取任务列表，返回文件来源和任务列表
 ///
 /// 逻辑：
-/// - 若主文件正常，返回(Main, 主文件任务列表)
-/// - 若主文件为空文件或损坏，尝试读取备份文件，若备份文件存在内容，发布警告，恢复数据，返回(Backup, 备份文件任务列表)
-/// - 若主文件为空文件，尝试读取备份文件，若备份文件也为空，返回空列表重新开始
-/// - 若主文件损坏，尝试读取备份文件，若备份文件为空，直接返回错误
+/// - 若主文件正常（可以解析为Tasks），返回(Main, 主文件任务列表)
+/// - 若主文件为0字节或损坏，尝试读取备份文件，若备份文件存在内容（可解析为Tasks），返回(Backup, 备份文件任务列表)
+/// - 若主文件为0字节，尝试读取备份文件，若备份文件0字节或`[]`，返回空列表重新开始
+/// - 若主文件损坏，尝试读取备份文件，若备份文件为0字节，返回错误
 fn load_for_update(
     main: &File,
     main_path: &Path,
     backup: &File,
     backup_path: &Path,
-    types: UserInterfaceTypes,
 ) -> Result<(Origin, Vec<Task>), AppError> {
     match read_task_from(main, main_path) {
         Ok(Some(tasks)) => Ok((Origin::Main, tasks)),
         Ok(None) => match read_task_from(backup, backup_path)? {
-            Some(tasks) => {
-                warn_recovered_from_backup(backup_path, types);
-                Ok((Origin::Backup, tasks))
-            }
+            Some(tasks) => Ok((Origin::Backup, tasks)),
             None => Ok((Origin::Main, Vec::new())),
         },
         Err(err) => match read_task_from(backup, backup_path)? {
-            Some(tasks) => {
-                warn_recovered_from_backup(backup_path, types);
-                Ok((Origin::Backup, tasks))
-            }
+            Some(tasks) => Ok((Origin::Backup, tasks)),
             None => Err(err),
         },
     }
@@ -361,13 +404,13 @@ fn load_for_update(
 /// 为TaskStore中只读的方法提供主文件为空或损坏后的回落
 ///
 /// 逻辑：
-/// - 若备份文件存在内容，抛出警告并返回备份文件中的内容
-/// - 若备份文件为空，返回空列表
+/// - 若备份文件存在可解析为Tasks的内容，抛出警告并返回备份文件中的内容
+/// - 若备份文件为0字节或不存在，返回空列表
 /// - 若备份文件损坏，返回错误
-fn load_backup_fallback(
-    backup_path: &Path,
-    types: UserInterfaceTypes,
-) -> Result<Vec<Task>, AppError> {
+///
+/// 备注：
+/// - 返回的`Vec`可以为`[]`若需要分别，由上一级处理
+fn load_backup_fallback(backup_path: &Path) -> Result<Vec<Task>, AppError> {
     let backup_file = match open_read(backup_path) {
         Ok(file) => file,
         Err(err) if is_not_found(&err) => return Ok(Vec::new()),
@@ -375,12 +418,7 @@ fn load_backup_fallback(
     };
     lock_share(&backup_file, backup_path)?;
     match read_task_from(&backup_file, backup_path) {
-        Ok(Some(tasks)) => {
-            if !tasks.is_empty() {
-                warn_recovered_from_backup(backup_path, types);
-            }
-            Ok(tasks)
-        }
+        Ok(Some(tasks)) => Ok(tasks),
         Ok(None) => Ok(Vec::new()),
         Err(err) => Err(err),
     }
@@ -390,8 +428,8 @@ fn load_backup_fallback(
 ///
 /// 逻辑：
 /// - 若备份文件不存在，返回`NothingToUndo`错误
-/// - 若备份文件存在，返回备份文件中的任务列表
-/// - 其他情况，返回`NothingToUndo`错误
+/// - 若备份文件可以解析出Tasks列表，返回备份文件中的任务列表
+/// - 其他情况（包括备份为0字节），返回`NothingToUndo`错误
 fn load_backup_strict(backup_path: &Path) -> Result<Vec<Task>, AppError> {
     let backup_file = match open_read(backup_path) {
         Ok(file) => file,

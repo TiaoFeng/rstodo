@@ -9,7 +9,7 @@ use ratatui::widgets::ListState;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::error::AppError;
-use crate::io::storage::TaskStore;
+use crate::io::storage::{TaskStore, recovered_from_backup_msg};
 use crate::task::{Priority, Task};
 use crate::time::to_local_time;
 use crate::todo::{SortBy, list_tasks};
@@ -340,7 +340,8 @@ impl<'a> App<'a> {
         if !tasks.is_empty() {
             list_state.select(Some(0));
         }
-        Ok(App {
+
+        let mut app = App {
             store,
             state: AppState::Main,
             tasks,
@@ -356,7 +357,9 @@ impl<'a> App<'a> {
             message_time: None,
             search_cursor: 0,
             should_quit: false,
-        })
+        };
+        app.consume_notice();
+        Ok(app)
     }
 
     /// 重新从磁盘加载任务列表和状态,保持当前的排序与搜索条件
@@ -451,6 +454,22 @@ impl<'a> App<'a> {
         {
             self.message = None;
             self.message_time = None;
+        }
+    }
+
+    /// 常驻提示: 不设message_time,不会被2秒清除; 下次set_message覆盖
+    pub fn set_notice(&mut self, message: impl Into<String>) {
+        self.message = Some(message.into());
+        self.message_time = None;
+    }
+
+    /// 消费存储层的待处理通知并转为footer常驻警告
+    pub fn consume_notice(&mut self) {
+        if self.store.take_notice().is_some() {
+            self.set_notice(recovered_from_backup_msg(
+                self.store.backup_path(),
+                self.store.interface_type(),
+            ));
         }
     }
 }
