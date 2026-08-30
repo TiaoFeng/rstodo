@@ -19,10 +19,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::app::{
-    App, AppState, ConfirmAction, FormData, FormMode, backspace_at_cursor, insert_at_cursor,
-    move_cursor_left, move_cursor_right,
-};
+use super::app::{App, AppState, ConfirmAction};
 use super::views::{settings_options, task_options};
 use crate::error::AppError;
 use crate::task::Priority;
@@ -31,7 +28,11 @@ use crate::todo::{
     SortBy, add_task, delete_alldone_apply, delete_alldone_preview, undo_task_apply,
     undo_task_preview,
 };
-use crate::tui::app::FormField;
+
+use crate::tui::form_state::{FormData, FormField, FormMode};
+use crate::tui::text::{
+    backspace_at_cursor, insert_at_cursor, move_cursor_left, move_cursor_right,
+};
 
 #[derive(Clone, Copy)]
 enum TaskAction {
@@ -159,7 +160,7 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     }
     match key.code {
         KeyCode::Char('q') => app.should_quit = true,
-        KeyCode::Up | KeyCode::Char('k') => app.select_previous(),
+        KeyCode::Up | KeyCode::Char('k') => app.select_back(),
         KeyCode::Down | KeyCode::Char('j') => app.select_next(),
         KeyCode::Enter => {
             if app.selected_task().is_some() {
@@ -193,12 +194,12 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     Ok(())
 }
 
-/// enter进入的选中task选项菜单: change / done|undone / delete
+/// enter进入的选中task选项菜单: done|undone / change / delete
 fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     let items_len = task_options::items(app).len();
     match key.code {
         KeyCode::Esc => app.state = AppState::Main,
-        KeyCode::Up => app.menu_previous(items_len),
+        KeyCode::Up => app.menu_back(items_len),
         KeyCode::Down => app.menu_next(items_len),
         KeyCode::Enter => {
             let Some((no, task)) = app.selected_task().cloned() else {
@@ -206,6 +207,7 @@ fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                 return Ok(());
             };
             match app.menu_index {
+                // done | undone
                 0 => {
                     if apply_to_tasks(app, &[(no, task.id())], TaskAction::Toggle)? == Some(false) {
                         app.set_message(format!("~_ Task {} undone", no));
@@ -215,9 +217,11 @@ fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                     app.reload()?;
                     app.state = AppState::Main;
                 }
+                // change
                 1 => {
                     app.state = AppState::Form(FormData::change(no, &task));
                 }
+                // delete
                 2 => {
                     apply_to_tasks(app, &[(no, task.id())], TaskAction::Delete)?;
                     app.set_message(format!("#_# Task {} deleted", no));
@@ -236,31 +240,37 @@ fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 fn handle_settings(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     match key.code {
         KeyCode::Esc => app.state = AppState::Main,
-        KeyCode::Up => app.menu_previous(settings_options::ITEMS.len()),
+        KeyCode::Up => app.menu_back(settings_options::ITEMS.len()),
         KeyCode::Down => app.menu_next(settings_options::ITEMS.len()),
         KeyCode::Enter => match app.menu_index {
+            // find
             0 => {
                 app.search_input = app.find.clone().unwrap_or_default();
                 app.search_cursor = app.search_input.chars().count();
                 app.state = AppState::SearchInput;
             }
+            // add
             1 => {
                 app.state = AppState::Form(FormData::add());
             }
+            // multiple select
             2 => {
                 app.multi_selected.clear();
                 app.multi_menu_open = false;
                 app.state = AppState::MultiSelect;
                 app.set_message("space to select, enter to confirm, esc to cancel");
             }
+            // delete all done tasks
             3 => {
                 let tasks = delete_alldone_preview(app.store)?;
                 app.state = AppState::Confirm(ConfirmAction::DeleteAll(tasks));
             }
+            // undo
             4 => {
                 let tasks = undo_task_preview(app.store)?;
                 app.state = AppState::Confirm(ConfirmAction::Undo(tasks));
             }
+            // quit
             5 => app.should_quit = true,
             _ => unreachable!(),
         },
@@ -272,7 +282,7 @@ fn handle_settings(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 /// 命令面板内嵌搜索输入框
 fn handle_search(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     match key.code {
-        KeyCode::Esc => app.state = AppState::Settings,
+        KeyCode::Esc => app.state = AppState::Main,
         KeyCode::Enter => {
             let keyword = app.search_input.trim();
             app.find = if keyword.is_empty() {
@@ -319,7 +329,7 @@ fn handle_multi(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
             app.multi_selected.clear();
             app.state = AppState::Main;
         }
-        KeyCode::Up => app.select_previous(),
+        KeyCode::Up => app.select_back(),
         KeyCode::Down => app.select_next(),
         KeyCode::Char(' ') => {
             if let Some((_, task)) = app.selected_task() {
@@ -346,7 +356,7 @@ fn handle_multi(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 fn handle_multi_menu(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     match key.code {
         KeyCode::Esc => app.multi_menu_open = false,
-        KeyCode::Up => app.menu_previous(task_options::MULTI_ITEMS.len()),
+        KeyCode::Up => app.menu_back(task_options::MULTI_ITEMS.len()),
         KeyCode::Down => app.menu_next(task_options::MULTI_ITEMS.len()),
         KeyCode::Enter => {
             let task_refs: Vec<(usize, usize)> = app
@@ -365,7 +375,8 @@ fn handle_multi_menu(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
             let verb = match app.menu_index {
                 0 => "done",
                 1 => "undone",
-                _ => "deleted",
+                2 => "deleted",
+                _ => unreachable!(),
             };
             app.set_message(format!(">>> {} task(s) {}", count, verb));
             app.multi_selected.clear();

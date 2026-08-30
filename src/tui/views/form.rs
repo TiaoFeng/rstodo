@@ -11,9 +11,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 
-use crate::tui::app::FormField;
+use crate::tui::form_state::{DESC_VISIBLE_LINES, FormData, FormField, FormMode};
 
-use super::super::app::{App, AppState, DESC_VISIBLE_LINES, FormData, FormMode};
+use super::super::app::{App, AppState};
 use super::super::theme::THEME;
 use super::super::ui::{centered_rect, display_width, input_window, priority_style};
 

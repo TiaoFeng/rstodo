@@ -5,9 +5,9 @@ mod tests {
     use crate::task::{Priority, Task};
     use crate::test_helpers::TempGuard;
     use crate::todo::{SortBy, add_task, delete_task};
-    use crate::tui::app::{self, App, FormField};
-    use crate::tui::app::{AppState, FormMode};
-
+    use crate::tui::app::AppState;
+    use crate::tui::app::{self, App};
+    use crate::tui::form_state::{FormData, FormField, FormMode};
     use crate::tui::ui;
     use crate::{UserInterfaceTypes, tui::handler};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -73,7 +73,7 @@ mod tests {
         app.state = AppState::SortMode;
         render(&mut app);
 
-        let mut form = app::FormData::add();
+        let mut form = FormData::add();
         form.content = "new task".to_string();
         form.desc_insert('\n');
         form.desc_insert('x');
@@ -191,7 +191,7 @@ mod tests {
     /// description多行编辑: enter换行/自动滚动/上下移动光标/退格合并行
     #[test]
     fn test_description_multiline_edit() {
-        let mut form = app::FormData::add();
+        let mut form = FormData::add();
         for c in "line1\nline2\nline3\nline4".chars() {
             form.desc_insert(c);
         }
@@ -214,7 +214,7 @@ mod tests {
         assert!(form.description.starts_with("line\n"));
 
         // 行首退格与上一行合并
-        let mut form = app::FormData::add();
+        let mut form = FormData::add();
         for c in "ab".chars() {
             form.desc_insert(c);
         }
@@ -225,7 +225,7 @@ mod tests {
         assert_eq!(form.desc_cursor_row_col(), (0, 2));
 
         // 移动到较短行时列位置截断
-        let mut form = app::FormData::add();
+        let mut form = FormData::add();
         for c in "abcd\nx".chars() {
             form.desc_insert(c);
         }
@@ -246,7 +246,7 @@ mod tests {
             None,
             Priority::Low,
         );
-        let form = app::FormData::change(1, &task);
+        let form = FormData::change(1, &task);
         assert_eq!(form.desc_cursor_row_col(), (4, 1));
         assert_eq!(form.desc_scroll(), 2);
     }
@@ -254,7 +254,7 @@ mod tests {
     /// description软换行: 超宽自动换行显示但不写入\n,上下键在显示行间移动
     #[test]
     fn test_description_soft_wrap() {
-        let mut form = app::FormData::add();
+        let mut form = FormData::add();
         form.set_desc_wrap_width(5);
         for c in "abcdefgh".chars() {
             form.desc_insert(c);
@@ -436,7 +436,7 @@ mod tests {
     fn unicode_editing_and_input_window_use_terminal_width() {
         let mut text = "e\u{301}".to_string();
         let mut cursor = text.chars().count();
-        app::backspace_at_cursor(&mut text, &mut cursor);
+        crate::tui::text::backspace_at_cursor(&mut text, &mut cursor);
         assert!(text.is_empty()); // 一次删除整个组合字素
         assert_eq!(cursor, 0);
 
@@ -444,7 +444,7 @@ mod tests {
         assert_eq!(ui::display_width("👩‍💻"), 2);
         assert_eq!(ui::input_window("abcdefgh", 8, 4), ("fgh".to_string(), 3));
 
-        let mut form = app::FormData::add();
+        let mut form = FormData::add();
         form.set_desc_wrap_width(2);
         for c in "e\u{301}中".chars() {
             form.desc_insert(c);
@@ -476,7 +476,7 @@ mod tests {
         let store = setup_store(&guard);
         let mut app = App::new(&store).unwrap();
         render_at(&mut app, 20, 8);
-        app.state = AppState::Form(app::FormData::add());
+        app.state = AppState::Form(FormData::add());
         render_at(&mut app, 59, 15);
     }
 }

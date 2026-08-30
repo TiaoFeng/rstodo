@@ -9,7 +9,9 @@ use ratatui::DefaultTerminal;
 
 use crate::{error::AppError, io::storage::TaskStore};
 mod app;
+mod form_state;
 mod handler;
+mod text;
 mod theme;
 mod tui_test;
 mod ui;
