@@ -1,16 +1,19 @@
 //! App状态模块
 
-use std::collections::HashSet;
-use std::time::{Duration, Instant};
-
 use chrono::{DateTime, Utc};
 use ratatui::widgets::ListState;
+use std::{
+    collections::HashSet,
+    time::{Duration, Instant},
+};
 
-use crate::error::AppError;
-use crate::io::storage::{TaskStore, recovered_from_backup_msg};
-use crate::task::Task;
-use crate::todo::{SortBy, list_tasks};
-use crate::tui::form_state::FormData;
+use crate::{
+    error::AppError,
+    io::storage::{TaskStore, recovered_from_backup_msg},
+    task::Task,
+    todo::{SortBy, list_tasks},
+    tui::form_state::FormData,
+};
 
 /// App界面状态
 pub enum AppState {

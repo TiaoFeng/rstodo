@@ -1,6 +1,7 @@
 //! 错误模块
 //!
 //! 定义了可能出现的错误类型，并实现了错误的输出trait
+
 use std::{error::Error, fmt, path::Path};
 
 /// Tui重新包装Error

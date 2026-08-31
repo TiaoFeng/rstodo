@@ -2,16 +2,18 @@
 //!
 //! 实现项目所需的add, change, list, show, complete,
 //! incomplete, delete, undo等接口
-use std::cmp::Ordering;
 
 use chrono::{DateTime, Utc};
 use clap::ValueEnum;
+use std::cmp::Ordering;
 
-use crate::UserInterfaceTypes;
-use crate::error::AppError;
-use crate::io::storage::TaskStore;
-use crate::task::{Priority, Task};
-use crate::time::to_local_time;
+use crate::{
+    UserInterfaceTypes,
+    error::AppError,
+    io::storage::TaskStore,
+    task::{Priority, Task},
+    time::to_local_time,
+};
 
 /// 定义了用户可选择的两种排序方式，按照时间或优先级
 #[derive(ValueEnum, Clone)]

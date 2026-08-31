@@ -4,13 +4,19 @@
 //! - 包括主文件和备份文件
 //! - 若主文件损坏会尝试读取备份文件
 //! - 通过文件锁防止发生并发的读写冲突
-use crate::UserInterfaceTypes;
-use crate::error::{AppError, io_err};
-use crate::task::Task;
-use std::cell::RefCell;
-use std::fs::File;
-use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+
+use std::{
+    cell::RefCell,
+    fs::File,
+    io::{ErrorKind, Read, Seek, SeekFrom, Write},
+    path::{Path, PathBuf},
+};
+
+use crate::{
+    UserInterfaceTypes,
+    error::{AppError, io_err},
+    task::Task,
+};
 
 /// 文件来源枚举，用于标记读取任务列表的来源
 /// - Main 主文件

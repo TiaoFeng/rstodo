@@ -6,17 +6,23 @@
 //! - 左下角显示任务列表
 //! - 右下角显示任务列表中选中项的细节
 
-use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
-use ratatui::style::Style;
-use ratatui::text::Line;
-use ratatui::widgets::{Block, Paragraph};
+use ratatui::{
+    Frame,
+    layout::{Alignment, Rect},
+    style::Style,
+    text::Line,
+    widgets::{Block, Paragraph},
+};
 use unicode_segmentation::UnicodeSegmentation;
 
-use super::app::{App, AppState, ConfirmAction};
-use super::theme::THEME;
-use super::views::{form, main_view, settings_options, task_options};
-use crate::task::Priority;
+use crate::{
+    task::Priority,
+    tui::{
+        app::{App, AppState, ConfirmAction},
+        theme::THEME,
+        views::{form, main_view, settings_options, task_options},
+    },
+};
 
 /// 绘制入口: 绘制主界面，再按状态叠加弹窗。
 pub fn draw(frame: &mut Frame, app: &mut App) {

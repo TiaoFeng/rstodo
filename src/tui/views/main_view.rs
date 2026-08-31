@@ -3,17 +3,23 @@
 //! 四象限布局: 当地时间 / 任务status / task列表 / 选中task细节, 底部为按键提示栏
 
 use chrono::{Local, Utc};
-use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, List, ListItem, Paragraph, Wrap};
+use ratatui::{
+    Frame,
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::{Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, List, ListItem, Paragraph, Wrap},
+};
 
-use super::super::app::{App, AppState};
-use super::super::text::wrap_rows;
-use super::super::theme::THEME;
-use super::super::ui::priority_style;
-use crate::time::to_local_time;
+use crate::{
+    time::to_local_time,
+    tui::{
+        app::{App, AppState},
+        text::wrap_rows,
+        theme::THEME,
+        ui::priority_style,
+    },
+};
 
 /// 绘制主界面
 pub fn draw(frame: &mut Frame, app: &mut App, area: Rect) {

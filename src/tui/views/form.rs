@@ -5,17 +5,20 @@
 //! 超出输入宽度的部分自动软换行显示(不写入\n),内容超出三行时自动滚动
 //! 使用ctrl+s保存
 
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, Paragraph};
+use ratatui::{
+    Frame,
+    layout::{Constraint, Layout, Rect},
+    style::{Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Clear, Paragraph},
+};
 
-use crate::tui::form_state::{DESC_VISIBLE_LINES, FormData, FormField, FormMode};
-
-use super::super::app::{App, AppState};
-use super::super::theme::THEME;
-use super::super::ui::{centered_rect, display_width, input_window, priority_style};
+use crate::tui::{
+    app::{App, AppState},
+    form_state::{DESC_VISIBLE_LINES, FormData, FormField, FormMode},
+    theme::THEME,
+    ui::{centered_rect, display_width, input_window, priority_style},
+};
 
 /// 输入框标签的显示宽度(标签12 + ": " 2)
 const LABEL_WIDTH: u16 = 14;

@@ -1,6 +1,7 @@
 //! 程序入口
 //!
 //! 使用clap实现终端命令输入
+
 mod commands;
 mod error;
 mod io;
@@ -13,13 +14,14 @@ mod tui;
 mod tests;
 
 use clap::{Parser, Subcommand};
-use io::storage::TaskStore;
 use std::error::Error;
 
-use crate::error::AppError;
-use crate::io::storage::recovered_from_backup_msg;
-use crate::task::Priority;
-use crate::todo::SortBy;
+use crate::{
+    error::AppError,
+    io::storage::{TaskStore, recovered_from_backup_msg},
+    task::Priority,
+    todo::SortBy,
+};
 
 /// Welcome to rstodo.
 /// Please enter a command to create or manage your tasks.

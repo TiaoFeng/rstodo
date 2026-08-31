@@ -1,11 +1,9 @@
 /// 单元测试
 #[cfg(test)]
 mod tests {
-    use std::ops::Add;
-
-    use chrono::{DateTime, Days, Utc};
-
     use crate::task::*;
+    use chrono::{DateTime, Days, Utc};
+    use std::ops::Add;
 
     #[test]
     fn test_task_new() {

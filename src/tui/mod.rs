@@ -2,15 +2,15 @@
 //!
 //! 模块声明和tui界面入口
 
-use std::{io::stdout, time::Duration};
-
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind},
     execute,
 };
 use ratatui::DefaultTerminal;
+use std::{io::stdout, time::Duration};
 
-use crate::{error::AppError, io::storage::TaskStore};
+use crate::{error::AppError, io::storage::TaskStore, tui::app::App};
+
 mod app;
 mod form_state;
 mod handler;
@@ -21,8 +21,6 @@ mod views;
 
 #[cfg(test)]
 mod tests;
-
-use app::App;
 
 /// TUI入口: 初始化终端,进入主循环,退出前恢复终端
 ///
