@@ -13,9 +13,11 @@ mod form_state;
 mod handler;
 mod text;
 mod theme;
-mod tui_test;
 mod ui;
 mod views;
+
+#[cfg(test)]
+mod tests;
 
 use app::App;
 
