@@ -1,15 +1,18 @@
-/// 使用TestBackend对TUI进行无头渲染与按键流测试
+//! 使用TestBackend对TUI进行无头渲染与按键流测试
 #[cfg(test)]
 mod tests {
-    use crate::io::storage::TaskStore;
-    use crate::task::{Priority, Task};
-    use crate::tests::test_helpers::TempGuard;
-    use crate::todo::{SortBy, add_task, delete_task};
-    use crate::tui::app::AppState;
-    use crate::tui::app::{self, App};
-    use crate::tui::form_state::{FormData, FormField, FormMode};
-    use crate::tui::ui;
-    use crate::{UserInterfaceTypes, tui::handler};
+    use crate::{
+        UserInterfaceTypes,
+        io::storage::TaskStore,
+        task::{Priority, Task},
+        tests::test_helpers::*,
+        todo::{SortBy, add_task, delete_task},
+        tui::{
+            app::{self, App, AppState},
+            form_state::{FormData, FormField, FormMode},
+            handler, ui,
+        },
+    };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use ratatui::backend::TestBackend;
 
