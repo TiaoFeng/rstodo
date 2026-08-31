@@ -71,6 +71,8 @@ pub struct App<'a> {
     pub details_scroll: usize,
     /// 详情面板每次翻页的行数(渲染时更新)
     pub details_page: usize,
+    /// 暂存待删除的任务ID，用于ctrl+d二次确认
+    pub pending_delete: Option<usize>,
     pub should_quit: bool,
 }
 
@@ -100,6 +102,7 @@ impl<'a> App<'a> {
             search_cursor: 0,
             details_scroll: 0,
             details_page: 10,
+            pending_delete: None,
             should_quit: false,
         };
         app.consume_notice();

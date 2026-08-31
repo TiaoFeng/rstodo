@@ -122,6 +122,9 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
 
 /// 主界面
 fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
+    if !(key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('d')) {
+        app.pending_delete = None;
+    }
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
             KeyCode::Char('a') => {
@@ -132,10 +135,19 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                     app.state = AppState::Main;
                     return Ok(());
                 };
-                apply_to_tasks(app, &[(no, task.id())], TaskAction::Delete)?;
-                app.set_message(format!("#_# Task {} deleted", no));
-                app.reload()?;
-                app.state = AppState::Main;
+                match app.pending_delete {
+                    Some(id) if id == task.id() => {
+                        apply_to_tasks(app, &[(no, task.id())], TaskAction::Delete)?;
+                        app.set_message(format!("#_# Task {} deleted", no));
+                        app.pending_delete = None;
+                        app.reload()?;
+                        app.state = AppState::Main;
+                    }
+                    _ => {
+                        app.pending_delete = Some(task.id());
+                        app.set_notice(format!("Press Ctrl+D again to delete task #{}", no));
+                    }
+                }
             }
             KeyCode::Char('e') => {
                 let Some((no, task)) = app.selected_task().cloned() else {
