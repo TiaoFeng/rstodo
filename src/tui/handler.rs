@@ -43,6 +43,16 @@ enum TaskAction {
     Delete,
 }
 
+/// 判断按键是否带有ctrl/alt组合
+///
+/// 单字符快捷键(q/k/j/r、排序模式的p/d/n、确认弹窗的y/n等)使用它过滤,
+/// 防止alt+q误退出、排序模式下ctrl+p误触发排序等组合键误触。
+/// 明确操作按键规范
+fn has_ctrl_or_alt(key: &KeyEvent) -> bool {
+    key.modifiers
+        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+}
+
 /// 使用稳定 ID 在一次文件锁内定位并修改任务，避免长驻 TUI 的缓存序号失效。
 fn apply_to_tasks(
     app: &App,
@@ -177,9 +187,9 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
         return Ok(());
     }
     match key.code {
-        KeyCode::Char('q') => app.should_quit = true,
-        KeyCode::Up | KeyCode::Char('k') => app.select_back(),
-        KeyCode::Down | KeyCode::Char('j') => app.select_next(),
+        // 把单字符的判断移动到后面，组合是否按下ctrl/alt统一判断
+        KeyCode::Up => app.select_back(),
+        KeyCode::Down => app.select_next(),
         // pgup/pgdn翻页查看详情面板的长description
         KeyCode::PageUp => {
             app.details_scroll = app.details_scroll.saturating_sub(app.details_page.max(1));
@@ -193,27 +203,34 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                 app.menu_index = 0;
             }
         }
-        KeyCode::Char('r') => {
-            app.reload()?;
-            app.set_message(">>> Refreshed");
-        }
-        // 空格切换done/undone
-        KeyCode::Char(' ') => {
-            let Some((no, task)) = app.selected_task().cloned() else {
-                return Ok(());
-            };
-            if apply_to_tasks(app, &[(no, task.id())], TaskAction::Toggle)? == Some(false) {
-                app.set_message(format!("~_ Task {} undone", no));
-            } else {
-                app.set_message(format!("^_ Task {} done", no));
-            }
-            app.reload()?;
-        }
         // 主界面按esc清除搜索过滤
         KeyCode::Esc if app.find.is_some() => {
             app.find = None;
             app.reload()?;
         }
+        // 单字符快捷键: 不允许与ctrl/alt组合(如alt+q不应退出), 大小写不敏感
+        KeyCode::Char(c) if !has_ctrl_or_alt(&key) => match c.to_ascii_lowercase() {
+            'q' => app.should_quit = true,
+            'k' => app.select_back(),
+            'j' => app.select_next(),
+            'r' => {
+                app.reload()?;
+                app.set_message(">>> Refreshed");
+            }
+            // 空格切换done/undone
+            ' ' => {
+                let Some((no, task)) = app.selected_task().cloned() else {
+                    return Ok(());
+                };
+                if apply_to_tasks(app, &[(no, task.id())], TaskAction::Toggle)? == Some(false) {
+                    app.set_message(format!("~_ Task {} undone", no));
+                } else {
+                    app.set_message(format!("^_ Task {} done", no));
+                }
+                app.reload()?;
+            }
+            _ => {}
+        },
         _ => {}
     }
     Ok(())
@@ -417,28 +434,36 @@ fn handle_multi_menu(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 /// delete all done / undo 的二次确认弹窗。
 fn handle_confirm(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     match key.code {
-        KeyCode::Char('y') | KeyCode::Char('Y') => {
-            let state = std::mem::replace(&mut app.state, AppState::Settings);
-            let AppState::Confirm(action) = state else {
-                return Ok(());
-            };
-            match action {
-                ConfirmAction::DeleteAll(snapshot) => {
-                    let count = snapshot.len();
-                    delete_alldone_apply(app.store, &snapshot)?;
-                    app.reload()?;
-                    app.set_message(format!("'_? Deleted {} done task(s)", count));
+        // 不允许ctrl/alt + y或者n的组合: ctrl+y不应意外确认删除; 大小写不敏感
+        KeyCode::Char(c) if !has_ctrl_or_alt(&key) => match c.to_ascii_lowercase() {
+            'y' => {
+                let state = std::mem::replace(&mut app.state, AppState::Settings);
+                let AppState::Confirm(action) = state else {
+                    return Ok(());
+                };
+                match action {
+                    ConfirmAction::DeleteAll(snapshot) => {
+                        let count = snapshot.len();
+                        delete_alldone_apply(app.store, &snapshot)?;
+                        app.reload()?;
+                        app.set_message(format!("'_? Deleted {} done task(s)", count));
+                    }
+                    ConfirmAction::Undo(snapshot) => {
+                        let count = snapshot.len();
+                        undo_task_apply(app.store, &snapshot)?;
+                        app.reload()?;
+                        app.set_message(format!("'_? Restored {} task(s)", count));
+                    }
                 }
-                ConfirmAction::Undo(snapshot) => {
-                    let count = snapshot.len();
-                    undo_task_apply(app.store, &snapshot)?;
-                    app.reload()?;
-                    app.set_message(format!("'_? Restored {} task(s)", count));
-                }
+                app.state = AppState::Main;
             }
-            app.state = AppState::Main;
-        }
-        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+            'n' => {
+                app.state = AppState::Settings;
+                app.set_message(">_< Operation cancelled.");
+            }
+            _ => {}
+        },
+        KeyCode::Esc => {
             app.state = AppState::Settings;
             app.set_message(">_< Operation cancelled.");
         }
@@ -450,25 +475,30 @@ fn handle_confirm(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 /// ctrl+l排序模式: p按优先级排序, d按截止日期排序
 fn handle_sort(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     match key.code {
-        KeyCode::Char('p') => {
-            app.sort = Some(SortBy::Priority);
-            app.reload()?;
-            app.state = AppState::Main;
-            app.set_message(">>> Sorted by priority");
-        }
-        KeyCode::Char('d') => {
-            app.sort = Some(SortBy::Deadline);
-            app.reload()?;
-            app.state = AppState::Main;
-            app.set_message(">>> Sorted by deadline");
-        }
-        KeyCode::Char('n') => {
-            app.sort = None;
-            app.reload()?;
-            app.state = AppState::Main;
-            app.set_message(">>> Sorted by default");
-        }
         KeyCode::Esc => app.state = AppState::Main,
+        // 不允许ctrl/alt的按键组合，只允许选择排序方式或者esc退出;
+        // 大小写不敏感
+        KeyCode::Char(c) if !has_ctrl_or_alt(&key) => match c.to_ascii_lowercase() {
+            'p' => {
+                app.sort = Some(SortBy::Priority);
+                app.reload()?;
+                app.state = AppState::Main;
+                app.set_message(">>> Sorted by priority");
+            }
+            'd' => {
+                app.sort = Some(SortBy::Deadline);
+                app.reload()?;
+                app.state = AppState::Main;
+                app.set_message(">>> Sorted by deadline");
+            }
+            'n' => {
+                app.sort = None;
+                app.reload()?;
+                app.state = AppState::Main;
+                app.set_message(">>> Sorted by default");
+            }
+            _ => {}
+        },
         _ => {}
     }
     Ok(())

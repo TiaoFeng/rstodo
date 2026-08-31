@@ -481,6 +481,69 @@ mod tests {
         assert!(app.message.is_some_and(|m| m.contains("deleted")));
     }
 
+    /// 单字符快捷键禁止使用ctrl/alt组合, 且大小写不敏感
+    #[test]
+    fn single_char_ignore_ctrl_alt_modifiers() {
+        let guard = TempGuard::new("single_char_ignore_ctrl_alt_modifiers");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        // alt+q不应退出
+        handler::handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::ALT),
+        );
+        assert!(!app.should_quit);
+
+        // alt+space不应切换done
+        handler::handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Char(' '), KeyModifiers::ALT),
+        );
+        assert!(!store.load().unwrap()[0].is_complete());
+
+        // 排序模式下ctrl+p不触发排序, 停留在排序模式
+        handler::handle_key(&mut app, ctrl('l'));
+        handler::handle_key(&mut app, ctrl('p'));
+        assert!(matches!(app.state, AppState::SortMode));
+        assert!(app.sort.is_none());
+
+        // 纯字符大写P按优先级排序(兼容大写锁定)
+        handler::handle_key(&mut app, key(KeyCode::Char('P')));
+        assert!(matches!(app.state, AppState::Main));
+        assert!(matches!(app.sort, Some(SortBy::Priority)));
+    }
+
+    /// 确认弹窗不允许ctrl+y等组合键, 只有纯字符y才确认
+    #[test]
+    fn confirm_ignores() {
+        let guard = TempGuard::new("confirm_ignores");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        delete_task(vec![1], &store).unwrap();
+        handler::handle_key(&mut app, ctrl('p'));
+        handler::handle_key(&mut app, key(KeyCode::Down)); // add
+        handler::handle_key(&mut app, key(KeyCode::Down)); // multiple choices
+        handler::handle_key(&mut app, key(KeyCode::Down)); // delete all done
+        handler::handle_key(&mut app, key(KeyCode::Down)); // undo
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+        assert!(matches!(
+            app.state,
+            AppState::Confirm(app::ConfirmAction::Undo(_))
+        ));
+
+        // ctrl+y不应确认, 停留在确认弹窗
+        handler::handle_key(&mut app, ctrl('y'));
+        assert!(matches!(app.state, AppState::Confirm(_)));
+        assert_eq!(store.load().unwrap().len(), 1);
+
+        // 纯字符y确认恢复
+        handler::handle_key(&mut app, key(KeyCode::Char('y')));
+        assert_eq!(store.load().unwrap().len(), 2);
+        assert!(matches!(app.state, AppState::Main));
+    }
+
     #[test]
     fn failed_change_keeps_form_and_message() {
         let guard = TempGuard::new("tui_form_error");
