@@ -454,6 +454,33 @@ mod tests {
         assert!(tasks[0].is_complete());
     }
 
+    /// ctrl+d二次确认: 任意其他按键解除挂起并清除常驻警告, 解除后再按ctrl+d只重新挂起
+    #[test]
+    fn ctrl_d_double_confirm_clears_notice() {
+        let guard = TempGuard::new("tui_ctrl_d");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        // 第一次ctrl+d挂起, 显示常驻警告
+        handler::handle_key(&mut app, ctrl('d'));
+        assert!(app.pending_delete.is_some());
+        assert!(app.message.is_some());
+
+        // 任意其他按键解除挂起并清除残留警告
+        handler::handle_key(&mut app, key(KeyCode::Down));
+        assert!(app.pending_delete.is_none());
+        assert!(app.message.is_none());
+
+        // 解除后再按ctrl+d只挂起, 不会删除
+        handler::handle_key(&mut app, ctrl('d'));
+        assert_eq!(store.load().unwrap().len(), 2);
+
+        // 挂起状态下连续ctrl+d才执行删除
+        handler::handle_key(&mut app, ctrl('d'));
+        assert_eq!(store.load().unwrap().len(), 1);
+        assert!(app.message.is_some_and(|m| m.contains("deleted")));
+    }
+
     #[test]
     fn failed_change_keeps_form_and_message() {
         let guard = TempGuard::new("tui_form_error");

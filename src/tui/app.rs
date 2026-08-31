@@ -205,9 +205,14 @@ impl<'a> App<'a> {
             .message_time
             .is_some_and(|set_at| set_at.elapsed() >= Duration::from_secs(2))
         {
-            self.message = None;
-            self.message_time = None;
+            self.clear_message();
         }
+    }
+
+    /// 立即清除底部提示信息
+    pub fn clear_message(&mut self) {
+        self.message = None;
+        self.message_time = None;
     }
 
     /// 常驻提示: 不设message_time,不会被2秒清除; 下次set_message覆盖

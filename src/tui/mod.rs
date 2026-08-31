@@ -37,13 +37,17 @@ pub fn run(store: &TaskStore) -> Result<(), AppError> {
             return Err(err.into());
         }
     };
-    execute!(stdout(), EnableMouseCapture)?;
+    // 所有后续io动作的错误都收集为变量而不用`?`提前返回:
+    // 任何一步失败都不得跳过后续清理, 否则终端会停留在raw mode
+    let mouse_enable = execute!(stdout(), EnableMouseCapture);
     let result = main_loop(&mut terminal, store);
-    execute!(stdout(), DisableMouseCapture)?;
-    // 两个清理动作都必须执行；主循环错误比清理错误更有诊断价值。
+    let mouse_disable = execute!(stdout(), DisableMouseCapture);
     let cursor_result = terminal.show_cursor();
     let restore_result = ratatui::try_restore();
+    // 按诊断价值排序上报: 主循环错误优先，清理错误次之
     result?;
+    mouse_enable?;
+    mouse_disable?;
     cursor_result?;
     restore_result?;
     Ok(())

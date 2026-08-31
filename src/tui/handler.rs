@@ -122,8 +122,13 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
 
 /// 主界面
 fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
-    if !(key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('d')) {
+    // 任意非ctrl+d按键解除二次确认, 并清除残留的footer警告,
+    // 保持"警告是否显示"与"ctrl+d是否处于挂起状态"严格一致
+    if app.pending_delete.is_some()
+        && !(key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('d'))
+    {
         app.pending_delete = None;
+        app.clear_message();
     }
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
