@@ -2,9 +2,12 @@
 //!
 //! 模块声明和tui界面入口
 
-use std::time::Duration;
+use std::{io::stdout, time::Duration};
 
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind},
+    execute,
+};
 use ratatui::DefaultTerminal;
 
 use crate::{error::AppError, io::storage::TaskStore};
@@ -34,8 +37,9 @@ pub fn run(store: &TaskStore) -> Result<(), AppError> {
             return Err(err.into());
         }
     };
+    execute!(stdout(), EnableMouseCapture)?;
     let result = main_loop(&mut terminal, store);
-
+    execute!(stdout(), DisableMouseCapture)?;
     // 两个清理动作都必须执行；主循环错误比清理错误更有诊断价值。
     let cursor_result = terminal.show_cursor();
     let restore_result = ratatui::try_restore();
@@ -51,12 +55,15 @@ fn main_loop(terminal: &mut DefaultTerminal, store: &TaskStore) -> Result<(), Ap
     while !app.should_quit {
         app.expire_message();
         terminal.draw(|frame| ui::draw(frame, &mut app))?;
-        if event::poll(Duration::from_millis(250))?
-            && let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-        {
-            handler::handle_key(&mut app, key);
-            app.consume_notice();
+        if event::poll(Duration::from_millis(250))? {
+            match event::read()? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    handler::handle_key(&mut app, key);
+                    app.consume_notice();
+                }
+                Event::Mouse(_) => {}
+                _ => {}
+            }
         }
     }
     Ok(())
