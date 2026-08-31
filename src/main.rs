@@ -5,11 +5,12 @@ mod commands;
 mod error;
 mod io;
 mod task;
-#[cfg(test)]
-mod test_helpers;
 mod time;
 mod todo;
 mod tui;
+
+#[cfg(test)]
+mod tests;
 
 use clap::{Parser, Subcommand};
 use io::storage::TaskStore;

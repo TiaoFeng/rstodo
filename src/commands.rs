@@ -189,7 +189,7 @@ pub fn status(store: &TaskStore) -> Result<(), AppError> {
 mod commands_test {
     use super::*;
     use crate::UserInterfaceTypes::Cli;
-    use crate::test_helpers::TempGuard;
+    use crate::tests::test_helpers::*;
     use crate::time::to_utc;
     use chrono::NaiveDateTime;
 

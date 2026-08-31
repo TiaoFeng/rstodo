@@ -3,7 +3,7 @@
 mod tests {
     use crate::io::storage::TaskStore;
     use crate::task::{Priority, Task};
-    use crate::test_helpers::TempGuard;
+    use crate::tests::test_helpers::TempGuard;
     use crate::todo::{SortBy, add_task, delete_task};
     use crate::tui::app::AppState;
     use crate::tui::app::{self, App};
