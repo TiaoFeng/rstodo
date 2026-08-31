@@ -2,30 +2,70 @@
 //!
 //! 为task实现change,done-undone,delete操作
 
-use ratatui::Frame;
-use ratatui::style::Style;
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, List, ListItem, ListState};
+use ratatui::{
+    Frame,
+    style::Style,
+    text::{Line, Span},
+    widgets::{Block, Clear, List, ListItem, ListState},
+};
 
-use super::super::app::App;
-use super::super::theme::THEME;
-use super::super::ui::centered_rect;
+use crate::tui::{app::App, theme::THEME, ui::centered_rect};
 
 /// 多选确认后的选项菜单
-pub const MULTI_ITEMS: [&str; 3] = ["done", "undone", "delete"];
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MultiOpMenu {
+    Done,
+    Undone,
+    Delete,
+}
+
+impl MultiOpMenu {
+    pub const ALL: [Self; 3] = [MultiOpMenu::Done, MultiOpMenu::Undone, MultiOpMenu::Delete];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            MultiOpMenu::Done => "Done",
+            MultiOpMenu::Undone => "Undone",
+            MultiOpMenu::Delete => "Delete",
+        }
+    }
+}
 
 /// 选中task的选项菜单项,done/undone随任务完成状态切换
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskOpMenu {
+    StatusChange,
+    Change,
+    Delete,
+}
+
+impl TaskOpMenu {
+    pub const ALL: [Self; 3] = [
+        TaskOpMenu::StatusChange,
+        TaskOpMenu::Change,
+        TaskOpMenu::Delete,
+    ];
+
+    pub fn label(self, app: &App) -> &'static str {
+        match self {
+            TaskOpMenu::StatusChange => {
+                if app.selected_task().is_some_and(|(_, t)| t.is_complete()) {
+                    "Undone"
+                } else {
+                    "Done"
+                }
+            }
+            TaskOpMenu::Change => "Change",
+            TaskOpMenu::Delete => "Delete",
+        }
+    }
+}
+
 pub fn items(app: &App) -> Vec<String> {
-    let change_status = if app.selected_task().is_some_and(|(_, t)| t.is_complete()) {
-        "undone"
-    } else {
-        "done"
-    };
-    vec![
-        change_status.to_string(),
-        "change".to_string(),
-        "delete".to_string(),
-    ]
+    TaskOpMenu::ALL
+        .iter()
+        .map(|m| m.label(app).to_string())
+        .collect()
 }
 
 /// enter进入的选中task选项弹窗
@@ -35,7 +75,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
 /// 多选确认后的done/undone/delete选项弹窗
 pub fn draw_multi_menu(frame: &mut Frame, app: &App) {
-    let items: Vec<String> = MULTI_ITEMS.iter().map(|s| s.to_string()).collect();
+    let items: Vec<String> = MultiOpMenu::ALL
+        .iter()
+        .map(|op| op.label().to_string())
+        .collect();
     menu_popup(frame, &items, app.menu_index);
 }
 

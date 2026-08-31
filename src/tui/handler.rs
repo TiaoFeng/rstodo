@@ -20,19 +20,23 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use super::app::{App, AppState, ConfirmAction};
-use super::views::{settings_options, task_options};
-use crate::error::AppError;
-use crate::task::Priority;
-use crate::time::parse_deadline_input;
-use crate::todo::{
-    SortBy, add_task, delete_alldone_apply, delete_alldone_preview, undo_task_apply,
-    undo_task_preview,
-};
-
-use crate::tui::form_state::{FormData, FormField, FormMode};
-use crate::tui::text::{
-    backspace_at_cursor, insert_at_cursor, move_cursor_left, move_cursor_right,
+use crate::{
+    error::AppError,
+    task::Priority,
+    time::parse_deadline_input,
+    todo::{
+        SortBy, add_task, delete_alldone_apply, delete_alldone_preview, undo_task_apply,
+        undo_task_preview,
+    },
+    tui::{
+        app::{App, AppState, ConfirmAction},
+        form_state::{FormData, FormField, FormMode},
+        text::{backspace_at_cursor, insert_at_cursor, move_cursor_left, move_cursor_right},
+        views::{
+            settings_options::SettingMenu,
+            task_options::{MultiOpMenu, TaskOpMenu, items},
+        },
+    },
 };
 
 #[derive(Clone, Copy)]
@@ -238,7 +242,7 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 
 /// enter进入的选中task选项菜单: done|undone / change / delete
 fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
-    let items_len = task_options::items(app).len();
+    let items_len = items(app).len();
     match key.code {
         KeyCode::Esc => app.state = AppState::Main,
         KeyCode::Up => app.menu_back(items_len),
@@ -248,9 +252,12 @@ fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                 app.state = AppState::Main;
                 return Ok(());
             };
-            match app.menu_index {
+            let Some(action) = TaskOpMenu::ALL.get(app.menu_index) else {
+                return Ok(());
+            };
+            match action {
                 // done | undone
-                0 => {
+                TaskOpMenu::StatusChange => {
                     if apply_to_tasks(app, &[(no, task.id())], TaskAction::Toggle)? == Some(false) {
                         app.set_message(format!("~_ Task {} undone", no));
                     } else {
@@ -260,17 +267,16 @@ fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                     app.state = AppState::Main;
                 }
                 // change
-                1 => {
+                TaskOpMenu::Change => {
                     app.state = AppState::Form(FormData::change(no, &task));
                 }
                 // delete
-                2 => {
+                TaskOpMenu::Delete => {
                     apply_to_tasks(app, &[(no, task.id())], TaskAction::Delete)?;
                     app.set_message(format!("#_# Task {} deleted", no));
                     app.reload()?;
                     app.state = AppState::Main;
                 }
-                _ => unreachable!(),
             }
         }
         _ => {}
@@ -282,40 +288,38 @@ fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 fn handle_settings(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     match key.code {
         KeyCode::Esc => app.state = AppState::Main,
-        KeyCode::Up => app.menu_back(settings_options::ITEMS.len()),
-        KeyCode::Down => app.menu_next(settings_options::ITEMS.len()),
-        KeyCode::Enter => match app.menu_index {
-            // find
-            0 => {
-                app.search_input = app.find.clone().unwrap_or_default();
-                app.search_cursor = app.search_input.chars().count();
-                app.state = AppState::SearchInput;
+        KeyCode::Up => app.menu_back(SettingMenu::ALL.len()),
+        KeyCode::Down => app.menu_next(SettingMenu::ALL.len()),
+        KeyCode::Enter => {
+            let Some(action) = SettingMenu::ALL.get(app.menu_index) else {
+                return Ok(());
+            };
+            match action {
+                SettingMenu::Search => {
+                    app.search_input = app.find.clone().unwrap_or_default();
+                    app.search_cursor = app.search_input.chars().count();
+                    app.state = AppState::SearchInput;
+                }
+                SettingMenu::Add => {
+                    app.state = AppState::Form(FormData::add());
+                }
+                SettingMenu::MultipleChoices => {
+                    app.multi_selected.clear();
+                    app.multi_menu_open = false;
+                    app.state = AppState::MultiSelect;
+                    app.set_message("space to select, enter to confirm, esc to cancel");
+                }
+                SettingMenu::DeleteAllDone => {
+                    let tasks = delete_alldone_preview(app.store)?;
+                    app.state = AppState::Confirm(ConfirmAction::DeleteAll(tasks));
+                }
+                SettingMenu::Undo => {
+                    let tasks = undo_task_preview(app.store)?;
+                    app.state = AppState::Confirm(ConfirmAction::Undo(tasks));
+                }
+                SettingMenu::Exit => app.should_quit = true,
             }
-            // add
-            1 => {
-                app.state = AppState::Form(FormData::add());
-            }
-            // multiple select
-            2 => {
-                app.multi_selected.clear();
-                app.multi_menu_open = false;
-                app.state = AppState::MultiSelect;
-                app.set_message("space to select, enter to confirm, esc to cancel");
-            }
-            // delete all done tasks
-            3 => {
-                let tasks = delete_alldone_preview(app.store)?;
-                app.state = AppState::Confirm(ConfirmAction::DeleteAll(tasks));
-            }
-            // undo
-            4 => {
-                let tasks = undo_task_preview(app.store)?;
-                app.state = AppState::Confirm(ConfirmAction::Undo(tasks));
-            }
-            // quit
-            5 => app.should_quit = true,
-            _ => unreachable!(),
-        },
+        }
         _ => {}
     }
     Ok(())
@@ -398,8 +402,8 @@ fn handle_multi(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 fn handle_multi_menu(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     match key.code {
         KeyCode::Esc => app.multi_menu_open = false,
-        KeyCode::Up => app.menu_back(task_options::MULTI_ITEMS.len()),
-        KeyCode::Down => app.menu_next(task_options::MULTI_ITEMS.len()),
+        KeyCode::Up => app.menu_back(MultiOpMenu::ALL.len()),
+        KeyCode::Down => app.menu_next(MultiOpMenu::ALL.len()),
         KeyCode::Enter => {
             let task_refs: Vec<(usize, usize)> = app
                 .tasks
@@ -408,19 +412,16 @@ fn handle_multi_menu(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                 .map(|(no, task)| (*no, task.id()))
                 .collect();
             let count = task_refs.len();
-            match app.menu_index {
-                0 => apply_to_tasks(app, &task_refs, TaskAction::Complete)?,
-                1 => apply_to_tasks(app, &task_refs, TaskAction::Incomplete)?,
-                2 => apply_to_tasks(app, &task_refs, TaskAction::Delete)?,
-                _ => unreachable!(),
+            let Some(action) = MultiOpMenu::ALL.get(app.menu_index) else {
+                return Ok(());
             };
-            let verb = match app.menu_index {
-                0 => "done",
-                1 => "undone",
-                2 => "deleted",
-                _ => unreachable!(),
+            match action {
+                MultiOpMenu::Done => apply_to_tasks(app, &task_refs, TaskAction::Complete)?,
+                MultiOpMenu::Undone => apply_to_tasks(app, &task_refs, TaskAction::Incomplete)?,
+                MultiOpMenu::Delete => apply_to_tasks(app, &task_refs, TaskAction::Delete)?,
             };
-            app.set_message(format!(">>> {} task(s) {}", count, verb));
+            let action_name = action.label();
+            app.set_message(format!(">>> {} task(s) {}", count, action_name));
             app.multi_selected.clear();
             app.multi_menu_open = false;
             app.reload()?;

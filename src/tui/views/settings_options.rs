@@ -7,26 +7,51 @@
 //! - delete all done
 //! - undo
 //! - exit
+use ratatui::{
+    Frame,
+    layout::{Constraint, Layout},
+    style::{Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Clear, List, ListItem, ListState, Paragraph},
+};
 
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout};
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, List, ListItem, ListState, Paragraph};
+use crate::tui::{
+    app::{App, AppState},
+    theme::THEME,
+    ui::{centered_rect, input_window},
+};
 
-use super::super::app::{App, AppState};
-use super::super::theme::THEME;
-use super::super::ui::{centered_rect, input_window};
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingMenu {
+    Search,
+    Add,
+    MultipleChoices,
+    DeleteAllDone,
+    Undo,
+    Exit,
+}
 
-/// 命令面板的选项
-pub const ITEMS: [&str; 6] = [
-    "search",
-    "add",
-    "multiple choices",
-    "delete all done",
-    "undo",
-    "exit",
-];
+impl SettingMenu {
+    pub const ALL: [Self; 6] = [
+        SettingMenu::Search,
+        SettingMenu::Add,
+        SettingMenu::MultipleChoices,
+        SettingMenu::DeleteAllDone,
+        SettingMenu::Undo,
+        SettingMenu::Exit,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Search => "Search",
+            Self::Add => "Add",
+            Self::MultipleChoices => "Multiple Choices",
+            Self::DeleteAllDone => "Delete All Done",
+            Self::Undo => "Undo",
+            Self::Exit => "Exit",
+        }
+    }
+}
 
 /// 绘制ctrl+p命令面板(或内嵌搜索输入框)
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -38,7 +63,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
 /// 命令面板
 fn draw_palette(frame: &mut Frame, app: &App) {
-    let area = centered_rect(frame.area(), 44, ITEMS.len() as u16 + 4);
+    let area = centered_rect(frame.area(), 44, SettingMenu::ALL.len() as u16 + 4);
     frame.render_widget(Clear, area);
 
     let block = Block::bordered()
@@ -46,9 +71,9 @@ fn draw_palette(frame: &mut Frame, app: &App) {
         .title_top(Line::from(Span::styled(" esc ", THEME.muted())).right_aligned())
         .border_style(Style::default().fg(THEME.border))
         .style(THEME.surface_style());
-    let rows: Vec<ListItem> = ITEMS
+    let rows: Vec<ListItem> = SettingMenu::ALL
         .iter()
-        .map(|item| ListItem::new(Line::from(format!("  {}", item))))
+        .map(|cmd| ListItem::new(Line::from(format!("  {}", cmd.label()))))
         .collect();
     let mut state = ListState::default();
     state.select(Some(app.menu_index));
