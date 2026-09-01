@@ -5,6 +5,69 @@
 use ratatui::text::Line;
 use unicode_segmentation::{GraphemeCursor, UnicodeSegmentation};
 
+/// 单行输入框: 文本与其编辑光标
+///
+/// 文本与光标必须同时更新才能保证"光标始终指向文本中的某个字符边界"这一不变量,
+/// 由本类型统一封装: 外部只能读取,所有编辑都经过方法
+#[derive(Clone)]
+pub struct InputLine {
+    value: String,
+    cursor: usize,
+}
+
+impl InputLine {
+    /// 以给定文本创建输入框,光标置于末尾
+    pub fn new(value: impl Into<String>) -> Self {
+        let value = value.into();
+        let cursor = value.chars().count();
+        InputLine { value, cursor }
+    }
+
+    /// 在光标处插入字符
+    pub fn insert(&mut self, c: char) {
+        insert_at_cursor(&mut self.value, &mut self.cursor, c);
+    }
+
+    /// 删除光标前的一个字素簇
+    pub fn backspace(&mut self) {
+        backspace_at_cursor(&mut self.value, &mut self.cursor);
+    }
+
+    /// 光标左移一个字素簇
+    pub fn left(&mut self) {
+        move_cursor_left(&self.value, &mut self.cursor);
+    }
+
+    /// 光标右移一个字素簇
+    pub fn right(&mut self) {
+        move_cursor_right(&self.value, &mut self.cursor);
+    }
+
+    /// 光标移到行首
+    pub fn home(&mut self) {
+        self.cursor = 0;
+    }
+
+    /// 光标移到行尾
+    pub fn end(&mut self) {
+        self.cursor = self.value.chars().count();
+    }
+
+    /// 清空输入内容
+    pub fn clear(&mut self) {
+        self.value.clear();
+        self.cursor = 0;
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+}
+
 /// 在字符串光标处插入字符
 pub fn insert_at_cursor(s: &mut String, cursor: &mut usize, c: char) {
     let byte = byte_idx(s, *cursor);

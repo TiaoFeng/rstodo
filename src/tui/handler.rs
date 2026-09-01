@@ -22,7 +22,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
     error::AppError,
-    task::Priority,
     time::parse_deadline_input,
     todo::{
         SortBy, add_task, delete_alldone_apply, delete_alldone_preview, undo_task_apply,
@@ -31,7 +30,7 @@ use crate::{
     tui::{
         app::{App, AppState, ConfirmAction, TaskAction},
         form_state::{FormData, FormField, FormMode},
-        text::{backspace_at_cursor, insert_at_cursor, move_cursor_left, move_cursor_right},
+        text::InputLine,
         views::{
             settings_options::SettingMenu,
             task_options::{MultiOpMenu, TaskOpMenu},
@@ -150,7 +149,7 @@ fn apply_to_tasks(
 pub fn handle_key(app: &mut App, key: KeyEvent) {
     // ctrl+c在任何状态下退出
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
-        app.should_quit = true;
+        app.quit();
         return;
     }
     let result = match app.state {
@@ -231,11 +230,10 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
             KeyCode::Char('p') => {
                 app.state = AppState::Settings;
                 app.menu_index = 0;
-                app.search_input.clear();
+                app.search_line.clear();
             }
             KeyCode::Char('f') => {
-                app.search_input = app.find.clone().unwrap_or_default();
-                app.search_cursor = app.search_input.chars().count();
+                app.search_line = InputLine::new(app.find.clone().unwrap_or_default());
                 app.state = AppState::SearchInput;
             }
             KeyCode::Char('l') => app.state = AppState::SortMode,
@@ -267,7 +265,7 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
         }
         // 单字符快捷键: 不允许与ctrl/alt组合(如alt+q不应退出), 大小写不敏感
         KeyCode::Char(c) if !has_ctrl_or_alt(&key) => match c.to_ascii_lowercase() {
-            'q' => app.should_quit = true,
+            'q' => app.quit(),
             'r' => {
                 app.reload()?;
                 app.set_message(">>> Refreshed");
@@ -338,8 +336,7 @@ fn handle_settings(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
             };
             match action {
                 SettingMenu::Search => {
-                    app.search_input = app.find.clone().unwrap_or_default();
-                    app.search_cursor = app.search_input.chars().count();
+                    app.search_line = InputLine::new(app.find.clone().unwrap_or_default());
                     app.state = AppState::SearchInput;
                 }
                 SettingMenu::Add => {
@@ -359,7 +356,7 @@ fn handle_settings(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                     let tasks = undo_task_preview(app.store)?;
                     app.state = AppState::Confirm(ConfirmAction::Undo(tasks));
                 }
-                SettingMenu::Exit => app.should_quit = true,
+                SettingMenu::Exit => app.quit(),
             }
         }
         _ => {}
@@ -370,14 +367,14 @@ fn handle_settings(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 /// 单行输入框的通用编辑按键
 ///
 ///  ←/→/home/end 移动光标, backspace 删除, 可打印字符插入。
-fn edit_line(key: KeyEvent, value: &mut String, cursor: &mut usize) {
+fn edit_line(key: KeyEvent, input: &mut InputLine) {
     match key.code {
-        KeyCode::Left => move_cursor_left(value, cursor),
-        KeyCode::Right => move_cursor_right(value, cursor),
-        KeyCode::Home => *cursor = 0,
-        KeyCode::End => *cursor = value.chars().count(),
-        KeyCode::Backspace => backspace_at_cursor(value, cursor),
-        KeyCode::Char(c) if !has_ctrl_or_alt(&key) => insert_at_cursor(value, cursor, c),
+        KeyCode::Left => input.left(),
+        KeyCode::Right => input.right(),
+        KeyCode::Home => input.home(),
+        KeyCode::End => input.end(),
+        KeyCode::Backspace => input.backspace(),
+        KeyCode::Char(c) if !has_ctrl_or_alt(&key) => input.insert(c),
         _ => {}
     }
 }
@@ -387,24 +384,23 @@ fn handle_search(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     match key.code {
         KeyCode::Esc => app.state = AppState::Main,
         KeyCode::Enter => {
-            let keyword = app.search_input.trim();
+            let keyword = app.search_line.value().trim();
             app.find = if keyword.is_empty() {
                 None
             } else {
                 Some(keyword.to_string())
             };
-            app.search_cursor = app.search_input.chars().count();
             app.reload()?;
             app.state = AppState::Main;
             match &app.find {
                 Some(kw) => {
-                    app.set_message(format!("Found {} task(s) for '{}'", app.tasks.len(), kw))
+                    app.set_message(format!("Found {} task(s) for '{}'", app.tasks().len(), kw))
                 }
                 None => app.set_message("Search cleared"),
             }
         }
         _ => {
-            edit_line(key, &mut app.search_input, &mut app.search_cursor);
+            edit_line(key, &mut app.search_line);
         }
     }
     Ok(())
@@ -453,7 +449,7 @@ fn handle_multi_menu(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
         KeyCode::Esc => app.multi_menu_open = false,
         KeyCode::Enter => {
             let task_refs: Vec<(usize, usize)> = app
-                .tasks
+                .tasks()
                 .iter()
                 .filter(|(_, task)| app.multi_selected.contains(&task.id()))
                 .map(|(no, task)| (*no, task.id()))
@@ -571,8 +567,8 @@ fn handle_form(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     match form.focus {
         // 单行输入content和deadline套用一套逻辑
         FormField::Content | FormField::Deadline => {
-            if let Some((value, cursor)) = form.single_field_mut() {
-                edit_line(key, value, cursor);
+            if let Some(input) = form.single_line_mut() {
+                edit_line(key, input);
             }
         }
         FormField::Description => match key.code {
@@ -594,21 +590,8 @@ fn handle_form(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
         },
         // priority栏使用左右键循环切换优先级
         FormField::Priority => match key.code {
-            // priority栏使用左右键切换优先级
-            KeyCode::Right if form.focus == FormField::Priority => {
-                form.priority = match form.priority {
-                    Priority::High => Priority::Low,
-                    Priority::Medium => Priority::High,
-                    Priority::Low => Priority::Medium,
-                };
-            }
-            KeyCode::Left if form.focus == FormField::Priority => {
-                form.priority = match form.priority {
-                    Priority::High => Priority::Medium,
-                    Priority::Medium => Priority::Low,
-                    Priority::Low => Priority::High,
-                };
-            }
+            KeyCode::Right => form.cycle_priority(true),
+            KeyCode::Left => form.cycle_priority(false),
             _ => {}
         },
     }
@@ -622,16 +605,16 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
     let Some(form) = app.form().cloned() else {
         return Ok(());
     };
-    let content = form.content.trim().to_string();
+    let content = form.content().trim().to_string();
     if content.is_empty() {
         app.set_message(":( Invalid content: content cannot be left blank.");
         return Ok(());
     }
-    let description = match form.description.trim() {
+    let description = match form.description().trim() {
         "" => None,
         desc => Some(desc.to_string()),
     };
-    let deadline = match form.deadline.trim() {
+    let deadline = match form.deadline().trim() {
         "" => None,
         input => match parse_deadline_input(input) {
             Ok(d) => Some(d),
@@ -641,14 +624,14 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
             }
         },
     };
-    let message = match form.mode {
+    let message = match form.mode() {
         FormMode::Add => {
             add_task(
                 app.store,
                 content,
                 description,
                 deadline,
-                Some(form.priority),
+                Some(form.priority()),
             )?;
             ">>> Task added".to_string()
         }
@@ -662,7 +645,7 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
                 task.set_content(content);
                 task.set_description(description);
                 task.set_deadline(deadline);
-                task.set_priority(form.priority);
+                task.set_priority(form.priority());
                 Ok(())
             })?;
             format!(">>> Task {} changed", no)

@@ -4,8 +4,8 @@ use crate::{
     task::{Priority, Task},
     time::to_local_time,
     tui::text::{
-        backspace_at_cursor, cursor_at_width, cursor_row_col, insert_at_cursor, move_cursor_left,
-        move_cursor_right, range_width, wrap_rows,
+        InputLine, backspace_at_cursor, cursor_at_width, cursor_row_col, insert_at_cursor,
+        move_cursor_left, move_cursor_right, range_width, wrap_rows,
     },
 };
 
@@ -59,17 +59,13 @@ pub const DESC_VISIBLE_LINES: usize = 3;
 /// - 超出输入宽度的部分自动软换行显示(不写入\n)
 #[derive(Clone)]
 pub struct FormData {
-    pub mode: FormMode,
-    pub content: String,
-    pub description: String,
-    pub deadline: String,
-    pub priority: Priority,
+    mode: FormMode,
+    content: InputLine,
+    description: String,
+    deadline: InputLine,
+    priority: Priority,
     /// 当前聚焦的输入框的类型
     pub focus: FormField,
-    /// content的编辑光标(字符下标)
-    pub content_cursor: usize,
-    /// deadline的编辑光标(字符下标)
-    pub deadline_cursor: usize,
     /// description的编辑光标(字符下标)
     desc_cursor: usize,
     /// description可见窗口的首个显示行下标
@@ -83,13 +79,11 @@ impl FormData {
     pub fn add() -> Self {
         FormData {
             mode: FormMode::Add,
-            content: String::new(),
+            content: InputLine::new(String::new()),
             description: String::new(),
-            deadline: String::new(),
+            deadline: InputLine::new(String::new()),
             priority: Priority::default(),
             focus: FormField::Content,
-            content_cursor: 0,
-            deadline_cursor: 0,
             desc_cursor: 0,
             desc_scroll: 0,
             desc_wrap_width: 46,
@@ -106,28 +100,72 @@ impl FormData {
             .unwrap_or_default();
         let mut form = FormData {
             mode: FormMode::Change { no, id: task.id() },
+            content: InputLine::new(content),
+            deadline: InputLine::new(deadline),
             priority: task.priority(),
             focus: FormField::Content,
-            content_cursor: content.chars().count(),
-            deadline_cursor: deadline.chars().count(),
             desc_cursor: description.chars().count(),
             desc_scroll: 0,
             desc_wrap_width: 46,
-            content,
             description,
-            deadline,
         };
         form.adjust_desc_scroll();
         form
     }
 
-    /// 返回当前聚焦的单行输入框(content/deadline)的文本与光标
+    pub fn mode(&self) -> FormMode {
+        self.mode
+    }
+
+    pub fn content(&self) -> &str {
+        self.content.value()
+    }
+
+    /// content的编辑光标(字符下标)
+    pub fn content_cursor(&self) -> usize {
+        self.content.cursor()
+    }
+
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    pub fn deadline(&self) -> &str {
+        self.deadline.value()
+    }
+
+    /// deadline的编辑光标(字符下标)
+    pub fn deadline_cursor(&self) -> usize {
+        self.deadline.cursor()
+    }
+
+    pub fn priority(&self) -> Priority {
+        self.priority
+    }
+
+    /// priority栏左右键循环切换优先级
+    ///
+    /// forward为true时按 High -> Low -> Medium 顺序,反向则倒序
+    pub fn cycle_priority(&mut self, forward: bool) {
+        self.priority = match (self.priority, forward) {
+            // → : High -> Low -> Medium -> High
+            (Priority::High, true) => Priority::Low,
+            (Priority::Low, true) => Priority::Medium,
+            (Priority::Medium, true) => Priority::High,
+            // ← : 反向
+            (Priority::High, false) => Priority::Medium,
+            (Priority::Medium, false) => Priority::Low,
+            (Priority::Low, false) => Priority::High,
+        };
+    }
+
+    /// 返回当前聚焦的单行输入框(content/deadline)
     ///
     /// 多行文本框和priority返回None
-    pub fn single_field_mut(&mut self) -> Option<(&mut String, &mut usize)> {
+    pub fn single_line_mut(&mut self) -> Option<&mut InputLine> {
         match self.focus {
-            FormField::Content => Some((&mut self.content, &mut self.content_cursor)),
-            FormField::Deadline => Some((&mut self.deadline, &mut self.deadline_cursor)),
+            FormField::Content => Some(&mut self.content),
+            FormField::Deadline => Some(&mut self.deadline),
             FormField::Description | FormField::Priority => None,
         }
     }

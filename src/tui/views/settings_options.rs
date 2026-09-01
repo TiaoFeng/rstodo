@@ -90,8 +90,11 @@ fn draw_search(frame: &mut Frame, app: &App) {
     .areas(inner);
 
     let value_width = input_area.width.saturating_sub(3);
-    let (visible_input, cursor_col) =
-        input_window(&app.search_input, app.search_cursor, value_width);
+    let (visible_input, cursor_col) = input_window(
+        app.search_line.value(),
+        app.search_line.cursor(),
+        value_width,
+    );
     let input = Line::from(vec![
         Span::styled(
             ">_ ", // 开头引导标记，3字符宽度

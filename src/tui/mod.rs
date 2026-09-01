@@ -54,7 +54,7 @@ pub fn run(store: &TaskStore) -> Result<(), AppError> {
 /// 主循环: 绘制界面并分发键盘事件,定时刷新时钟
 fn main_loop(terminal: &mut DefaultTerminal, store: &TaskStore) -> Result<(), AppError> {
     let mut app = App::new(store)?;
-    while !app.should_quit {
+    while !app.should_quit() {
         app.expire_message();
         terminal.draw(|frame| ui::draw(frame, &mut app))?;
         if event::poll(Duration::from_millis(250))? {

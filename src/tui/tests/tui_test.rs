@@ -10,7 +10,9 @@ mod tests {
         tui::{
             app::{self, App, AppState},
             form_state::{FormData, FormField, FormMode},
-            handler, ui,
+            handler,
+            text::InputLine,
+            ui,
             views::task_options::TaskOpMenu,
         },
     };
@@ -65,7 +67,7 @@ mod tests {
         render(&mut app);
 
         app.state = AppState::SearchInput;
-        app.search_input = "task".to_string();
+        app.search_line = InputLine::new("task");
         render(&mut app);
 
         app.state = AppState::MultiSelect;
@@ -78,7 +80,11 @@ mod tests {
         render(&mut app);
 
         let mut form = FormData::add();
-        form.content = "new task".to_string();
+        if let Some(input) = form.single_line_mut() {
+            for c in "new task".chars() {
+                input.insert(c);
+            }
+        }
         form.desc_insert('\n');
         form.desc_insert('x');
         app.state = AppState::Form(form);
@@ -133,12 +139,12 @@ mod tests {
             handler::handle_key(&mut app, key(KeyCode::Char(c)));
         }
         handler::handle_key(&mut app, key(KeyCode::Enter));
-        assert_eq!(app.tasks.len(), 1);
-        assert_eq!(app.tasks[0].1.content(), "task2");
+        assert_eq!(app.tasks().len(), 1);
+        assert_eq!(app.tasks()[0].1.content(), "task2");
 
         // esc清除搜索过滤
         handler::handle_key(&mut app, key(KeyCode::Esc));
-        assert_eq!(app.tasks.len(), 2);
+        assert_eq!(app.tasks().len(), 2);
 
         // ctrl+p -> multiple choices -> space选中 -> enter -> delete
         handler::handle_key(&mut app, ctrl('p'));
@@ -158,7 +164,7 @@ mod tests {
 
         // q退出
         handler::handle_key(&mut app, key(KeyCode::Char('q')));
-        assert!(app.should_quit);
+        assert!(app.should_quit());
     }
 
     /// 主界面space切换done/undone,ctrl+e进入change表单并预填内容
@@ -179,12 +185,12 @@ mod tests {
         // ctrl+e进入change表单,预填content/description
         handler::handle_key(&mut app, ctrl('e'));
         assert!(matches!(
-            app.form().map(|form| form.mode),
+            app.form().map(|form| form.mode()),
             Some(FormMode::Change { no: 1, .. })
         ));
         let form = app.form().unwrap();
-        assert_eq!(form.content, "task1");
-        assert_eq!(form.description, "desc1");
+        assert_eq!(form.content(), "task1");
+        assert_eq!(form.description(), "desc1");
 
         // esc取消返回主界面
         handler::handle_key(&mut app, key(KeyCode::Esc));
@@ -253,7 +259,7 @@ mod tests {
 
         // 在第一行中间插入字符,编辑上面的文字
         form.desc_backspace();
-        assert!(form.description.starts_with("line\n"));
+        assert!(form.description().starts_with("line\n"));
 
         // 行首退格与上一行合并
         let mut form = FormData::add();
@@ -263,7 +269,7 @@ mod tests {
         form.desc_insert('\n');
         assert_eq!(form.desc_cursor_row_col(), (1, 0));
         form.desc_backspace();
-        assert_eq!(form.description, "ab");
+        assert_eq!(form.description(), "ab");
         assert_eq!(form.desc_cursor_row_col(), (0, 2));
 
         // 移动到较短行时列位置截断
@@ -302,7 +308,7 @@ mod tests {
             form.desc_insert(c);
         }
         // 8字符按宽度5软换行为两个显示行,文本中没有\n
-        assert_eq!(form.description, "abcdefgh");
+        assert_eq!(form.description(), "abcdefgh");
         assert_eq!(form.desc_rows(), vec![(0, 5), (5, 8)]);
         assert_eq!(form.desc_cursor_row_col(), (1, 3));
 
@@ -315,7 +321,7 @@ mod tests {
         // 显式换行与软换行共存
         form.desc_insert('\n');
         form.desc_insert('x');
-        assert_eq!(form.description, "abcdefgh\nx");
+        assert_eq!(form.description(), "abcdefgh\nx");
         assert_eq!(form.desc_rows(), vec![(0, 5), (5, 8), (9, 10)]);
         assert_eq!(form.desc_cursor_row_col(), (2, 1));
 
@@ -339,7 +345,7 @@ mod tests {
         handler::handle_key(&mut app, key(KeyCode::Down));
         handler::handle_key(&mut app, key(KeyCode::Enter));
         assert!(matches!(
-            app.form().map(|form| form.mode),
+            app.form().map(|form| form.mode()),
             Some(FormMode::Add)
         ));
 
@@ -349,7 +355,7 @@ mod tests {
         }
         handler::handle_key(&mut app, key(KeyCode::Left));
         handler::handle_key(&mut app, key(KeyCode::Char('X')));
-        assert_eq!(app.form().unwrap().content, "abXc");
+        assert_eq!(app.form().unwrap().content(), "abXc");
         // 上下键不再切换栏位
         handler::handle_key(&mut app, key(KeyCode::Up));
         handler::handle_key(&mut app, key(KeyCode::Down));
@@ -365,7 +371,7 @@ mod tests {
         for c in "cd".chars() {
             handler::handle_key(&mut app, key(KeyCode::Char(c)));
         }
-        assert_eq!(app.form().unwrap().description, "ab\ncd");
+        assert_eq!(app.form().unwrap().description(), "ab\ncd");
         assert_eq!(app.form().unwrap().desc_cursor_row_col(), (1, 2));
         handler::handle_key(&mut app, key(KeyCode::Left)); // (1,1)
         handler::handle_key(&mut app, key(KeyCode::Left)); // (1,0)
@@ -386,7 +392,7 @@ mod tests {
         handler::handle_key(&mut app, key(KeyCode::BackTab));
         assert_eq!(app.form().unwrap().focus, FormField::Priority);
         handler::handle_key(&mut app, key(KeyCode::Right));
-        assert_eq!(app.form().unwrap().priority, Priority::Medium);
+        assert_eq!(app.form().unwrap().priority(), Priority::Medium);
     }
 
     /// undo恢复 / 排序n恢复默认 / 搜索框左右移动光标
@@ -431,12 +437,12 @@ mod tests {
         handler::handle_key(&mut app, key(KeyCode::Left));
         handler::handle_key(&mut app, key(KeyCode::Left));
         handler::handle_key(&mut app, key(KeyCode::Char('X')));
-        assert_eq!(app.search_input, "taXsk");
-        assert_eq!(app.search_cursor, 3);
+        assert_eq!(app.search_line.value(), "taXsk");
+        assert_eq!(app.search_line.cursor(), 3);
 
         // ctrl+c退出
         handler::handle_key(&mut app, ctrl('c'));
-        assert!(app.should_quit);
+        assert!(app.should_quit());
     }
 
     #[test]
@@ -465,12 +471,12 @@ mod tests {
         // 第一次ctrl+d挂起, 显示常驻警告
         handler::handle_key(&mut app, ctrl('d'));
         assert!(app.pending_delete.is_some());
-        assert!(app.message.is_some());
+        assert!(app.message().is_some());
 
         // 任意其他按键解除挂起并清除残留警告
         handler::handle_key(&mut app, key(KeyCode::Down));
         assert!(app.pending_delete.is_none());
-        assert!(app.message.is_none());
+        assert!(app.message().is_none());
 
         // 解除后再按ctrl+d只挂起, 不会删除
         handler::handle_key(&mut app, ctrl('d'));
@@ -479,7 +485,7 @@ mod tests {
         // 挂起状态下连续ctrl+d才执行删除
         handler::handle_key(&mut app, ctrl('d'));
         assert_eq!(store.load().unwrap().len(), 1);
-        assert!(app.message.is_some_and(|m| m.contains("deleted")));
+        assert!(app.message().is_some_and(|m| m.contains("deleted")));
     }
 
     /// 单字符快捷键禁止使用ctrl/alt组合, 且大小写不敏感
@@ -494,7 +500,7 @@ mod tests {
             &mut app,
             KeyEvent::new(KeyCode::Char('q'), KeyModifiers::ALT),
         );
-        assert!(!app.should_quit);
+        assert!(!app.should_quit());
 
         // alt+space不应切换done
         handler::handle_key(
@@ -557,8 +563,7 @@ mod tests {
 
         assert!(app.form().is_some());
         assert!(
-            app.message
-                .as_deref()
+            app.message()
                 .is_some_and(|text| text.contains("Task not found"))
         );
         render(&mut app); // 错误状态仍可正常渲染表单
@@ -612,7 +617,7 @@ mod tests {
         // ctrl+a进入add表单: content输入"abc" -> home插入X -> end插入Y
         handler::handle_key(&mut app, ctrl('a'));
         assert!(matches!(
-            app.form().map(|form| form.mode),
+            app.form().map(|form| form.mode()),
             Some(FormMode::Add)
         ));
         for c in "abc".chars() {
@@ -620,12 +625,12 @@ mod tests {
         }
         handler::handle_key(&mut app, key(KeyCode::Home));
         handler::handle_key(&mut app, key(KeyCode::Char('X')));
-        assert_eq!(app.form().unwrap().content, "Xabc");
-        assert_eq!(app.form().unwrap().content_cursor, 1);
+        assert_eq!(app.form().unwrap().content(), "Xabc");
+        assert_eq!(app.form().unwrap().content_cursor(), 1);
         handler::handle_key(&mut app, key(KeyCode::End));
         handler::handle_key(&mut app, key(KeyCode::Char('Y')));
-        assert_eq!(app.form().unwrap().content, "XabcY");
-        assert_eq!(app.form().unwrap().content_cursor, 5);
+        assert_eq!(app.form().unwrap().content(), "XabcY");
+        assert_eq!(app.form().unwrap().content_cursor(), 5);
 
         // tab两次切到deadline, home/end 同样生效
         handler::handle_key(&mut app, key(KeyCode::Tab)); // description
@@ -636,8 +641,8 @@ mod tests {
         }
         handler::handle_key(&mut app, key(KeyCode::Home));
         handler::handle_key(&mut app, key(KeyCode::Char('1')));
-        assert_eq!(app.form().unwrap().deadline, "12026");
-        assert_eq!(app.form().unwrap().deadline_cursor, 1);
+        assert_eq!(app.form().unwrap().deadline(), "12026");
+        assert_eq!(app.form().unwrap().deadline_cursor(), 1);
     }
 
     /// 搜索框的 home/end 与表单单行输入框行为一致
@@ -653,13 +658,13 @@ mod tests {
             handler::handle_key(&mut app, key(KeyCode::Char(c)));
         }
         handler::handle_key(&mut app, key(KeyCode::Home));
-        assert_eq!(app.search_cursor, 0);
+        assert_eq!(app.search_line.cursor(), 0);
         handler::handle_key(&mut app, key(KeyCode::Char('X')));
-        assert_eq!(app.search_input, "Xtask");
+        assert_eq!(app.search_line.value(), "Xtask");
         handler::handle_key(&mut app, key(KeyCode::End));
         handler::handle_key(&mut app, key(KeyCode::Char('Y')));
-        assert_eq!(app.search_input, "XtaskY");
-        assert_eq!(app.search_cursor, 6);
+        assert_eq!(app.search_line.value(), "XtaskY");
+        assert_eq!(app.search_line.cursor(), 6);
     }
 
     /// 任务列表与选项菜单统一支持 j/k 移动
@@ -714,11 +719,7 @@ mod tests {
         handler::handle_key(&mut app, key(KeyCode::Enter));
         handler::handle_key(&mut app, key(KeyCode::Enter));
         assert!(store.load().unwrap()[0].is_complete());
-        assert!(
-            app.message
-                .as_deref()
-                .is_some_and(|m| m.contains("Task 1 done"))
-        );
+        assert!(app.message().is_some_and(|m| m.contains("Task 1 done")));
 
         // 已完成: 首项显示 Undone, 回车后置为未完成, 提示与标签一致
         assert!(app.selected_done());
@@ -726,11 +727,7 @@ mod tests {
         handler::handle_key(&mut app, key(KeyCode::Enter));
         handler::handle_key(&mut app, key(KeyCode::Enter));
         assert!(!store.load().unwrap()[0].is_complete());
-        assert!(
-            app.message
-                .as_deref()
-                .is_some_and(|m| m.contains("Task 1 undone"))
-        );
+        assert!(app.message().is_some_and(|m| m.contains("Task 1 undone")));
     }
 
     #[test]

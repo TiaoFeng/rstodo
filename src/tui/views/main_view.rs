@@ -149,17 +149,18 @@ fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
 /// 左下角: task列表,多选模式下带勾选框
 fn draw_tasks(frame: &mut Frame, app: &mut App, area: Rect) {
     let in_multi = matches!(app.state, AppState::MultiSelect);
+    let tasks = app.tasks();
     let title = match (in_multi, app.find.is_some()) {
-        (true, _) => format!(" TASK ({}) [multi-select] ", app.tasks.len()),
-        (false, true) => format!(" TASK ({}) [filtered] ", app.tasks.len()),
-        (false, false) => format!(" TASK ({}) ", app.tasks.len()),
+        (true, _) => format!(" TASK ({}) [multi-select] ", tasks.len()),
+        (false, true) => format!(" TASK ({}) [filtered] ", tasks.len()),
+        (false, false) => format!(" TASK ({}) ", tasks.len()),
     };
     let block = Block::bordered()
         .title(Span::styled(title, THEME.title()))
         .border_style(Style::default().fg(THEME.border))
         .style(THEME.base_style());
 
-    if app.tasks.is_empty() {
+    if tasks.is_empty() {
         let empty = Paragraph::new(vec![
             Line::from(Span::styled("+_+ No tasks.", THEME.muted())),
             Line::from(""),
@@ -171,8 +172,7 @@ fn draw_tasks(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let now = Utc::now();
-    let items: Vec<ListItem> = app
-        .tasks
+    let items: Vec<ListItem> = tasks
         .iter()
         .map(|(no, task)| {
             let checkbox = if in_multi {
@@ -309,7 +309,7 @@ fn draw_details(frame: &mut Frame, app: &mut App, area: Rect) {
 /// 底部: 按键提示 / 当前排序与搜索条件 / 操作消息
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     // 表单弹窗内已展示校验错误信息,footer不再重复显示
-    if let Some(message) = app.message.as_deref()
+    if let Some(message) = app.message()
         && !matches!(app.state, AppState::Form(_))
     {
         let line = Line::from(Span::styled(

@@ -12,7 +12,7 @@ use crate::{
     io::storage::{TaskStore, recovered_from_backup_msg},
     task::Task,
     todo::{SortBy, list_tasks},
-    tui::form_state::FormData,
+    tui::{form_state::FormData, text::InputLine},
 };
 
 /// App界面状态
@@ -56,7 +56,9 @@ pub struct App<'a> {
     pub store: &'a TaskStore,
     pub state: AppState,
     /// 当前展示的任务列表,(文件中的序号, 任务)
-    pub tasks: Vec<(usize, Task)>,
+    ///
+    /// 与all_tasks同为磁盘快照的两份视图,只在reload时同步刷新
+    tasks: Vec<(usize, Task)>,
     pub list_state: ListState,
     /// 当前排序方式,None表示默认(文件顺序)
     pub sort: Option<SortBy>,
@@ -68,23 +70,25 @@ pub struct App<'a> {
     pub multi_selected: HashSet<usize>,
     /// 多选确认后的done/undone/delete选项菜单是否展开
     pub multi_menu_open: bool,
-    /// 命令面板内嵌搜索的输入内容
-    pub search_input: String,
+    /// 命令面板内嵌的搜索输入框
+    pub search_line: InputLine,
     /// 未经过搜索过滤的任务，用于实时计算状态统计。
-    pub all_tasks: Vec<Task>,
+    ///
+    /// 与tasks仅在reload中一同刷新,单独修改会使统计与列表不一致
+    all_tasks: Vec<Task>,
     /// 底部提示信息(操作结果或错误),超过2秒自动清除
-    pub message: Option<String>,
+    ///
+    /// 与message_time共同维护"是否会被自动清除",只能用set_message/set_notice/clear_message修改
+    message: Option<String>,
     /// message的设置时间,用于定时清除
-    pub message_time: Option<Instant>,
-    /// 搜索输入框的编辑光标(字符下标)
-    pub search_cursor: usize,
+    message_time: Option<Instant>,
     /// 详情面板的垂直滚动偏移(显示行数)
     pub details_scroll: usize,
     /// 详情面板每次翻页的行数(渲染时更新)
     pub details_page: usize,
     /// 暂存待删除的任务ID，用于ctrl+d二次确认
     pub pending_delete: Option<usize>,
-    pub should_quit: bool,
+    should_quit: bool,
 }
 
 impl<'a> App<'a> {
@@ -107,10 +111,9 @@ impl<'a> App<'a> {
             menu_index: 0,
             multi_selected: HashSet::new(),
             multi_menu_open: false,
-            search_input: String::new(),
+            search_line: InputLine::new(String::new()),
             message: None,
             message_time: None,
-            search_cursor: 0,
             details_scroll: 0,
             details_page: 10,
             pending_delete: None,
@@ -118,6 +121,25 @@ impl<'a> App<'a> {
         };
         app.consume_notice();
         Ok(app)
+    }
+
+    /// 当前展示的任务列表,与all_tasks一同刷新
+    pub fn tasks(&self) -> &[(usize, Task)] {
+        &self.tasks
+    }
+
+    /// 底部提示信息,存在时优先占据footer
+    pub fn message(&self) -> Option<&str> {
+        self.message.as_deref()
+    }
+
+    pub fn should_quit(&self) -> bool {
+        self.should_quit
+    }
+
+    /// 退出主循环
+    pub fn quit(&mut self) {
+        self.should_quit = true;
     }
 
     /// 返回当前选中任务是否已完成

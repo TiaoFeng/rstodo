@@ -25,11 +25,11 @@ const LABEL_WIDTH: u16 = 14;
 
 /// 绘制add / change表单弹窗
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    let message = app.message.clone();
+    let message = app.message().map(str::to_string);
     let AppState::Form(form) = &mut app.state else {
         return;
     };
-    let title = match form.mode {
+    let title = match form.mode() {
         FormMode::Add => " Add Task ".to_string(),
         FormMode::Change { no, .. } => format!(" Change Task #{} ", no),
     };
@@ -63,8 +63,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_text_field(
         frame,
         "Content",
-        &form.content,
-        form.content_cursor,
+        form.content(),
+        form.content_cursor(),
         None,
         content_area,
         form.focus == FormField::Content,
@@ -73,8 +73,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_text_field(
         frame,
         "Deadline",
-        &form.deadline,
-        form.deadline_cursor,
+        form.deadline(),
+        form.deadline_cursor(),
         Some("2000-01-01 or 2000-01-01T12:00:00"),
         deadline_area,
         form.focus == FormField::Deadline,
@@ -151,7 +151,7 @@ fn draw_description_field(frame: &mut Frame, form: &mut FormData, area: Rect) {
         .desc_rows()
         .iter()
         .map(|&(start, end)| {
-            form.description
+            form.description()
                 .chars()
                 .skip(start)
                 .take(end - start)
@@ -175,7 +175,7 @@ fn draw_description_field(frame: &mut Frame, form: &mut FormData, area: Rect) {
         }
         match texts.get(scroll + i) {
             // 空文本框在第一行显示placeholder
-            None if form.description.is_empty() && i == 0 => {
+            None if form.description().is_empty() && i == 0 => {
                 spans.push(Span::styled("(optional)", THEME.muted()));
             }
             Some(text) => {
@@ -211,8 +211,8 @@ fn draw_priority_field(frame: &mut Frame, form: &FormData, area: Rect) {
         Span::styled(format!("{:<12}: ", "Priority"), label_style(focused)),
         Span::styled("< ", arrow_style),
         Span::styled(
-            form.priority.to_string(),
-            priority_style(form.priority).add_modifier(Modifier::BOLD),
+            form.priority().to_string(),
+            priority_style(form.priority()).add_modifier(Modifier::BOLD),
         ),
         Span::styled(" >", arrow_style),
     ]);
