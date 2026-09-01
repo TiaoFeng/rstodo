@@ -91,21 +91,45 @@ pub struct App<'a> {
     should_quit: bool,
 }
 
+/// 一次加载得到的两份任务视图: 带序号的展示列表 + 全量任务(供状态统计)
+struct TaskViews {
+    listed: Vec<(usize, Task)>,
+    all: Vec<Task>,
+}
+
+/// 一次加载同时得到展示列表与全量任务列表
+///
+/// find未激活时展示列表即全量列表(带序号),从同一快照反解出all_tasks,
+/// 省去第二次文件锁与解析,且保证两份视图来自同一快照;
+/// find激活时展示列表是子集,无法反解全量,all_tasks需单独加载
+fn load_views(
+    store: &TaskStore,
+    sort: Option<SortBy>,
+    find: Option<&str>,
+) -> Result<TaskViews, AppError> {
+    let listed = list_tasks(store, sort, find.map(str::to_string))?.unwrap_or_default();
+    let all = if find.is_none() {
+        listed.iter().map(|(_, t)| t.clone()).collect()
+    } else {
+        store.load()?
+    };
+    Ok(TaskViews { listed, all })
+}
+
 impl<'a> App<'a> {
     pub fn new(store: &'a TaskStore) -> Result<Self, AppError> {
-        let tasks = list_tasks(store, None, None)?.unwrap_or_default();
-        let all_tasks = store.load()?;
+        let views = load_views(store, None, None)?;
         let mut list_state = ListState::default();
-        if !tasks.is_empty() {
+        if !views.listed.is_empty() {
             list_state.select(Some(0));
         }
 
         let mut app = App {
             store,
             state: AppState::Main,
-            tasks,
+            tasks: views.listed,
             list_state,
-            all_tasks,
+            all_tasks: views.all,
             sort: None,
             find: None,
             menu_index: 0,
@@ -150,10 +174,12 @@ impl<'a> App<'a> {
     }
 
     /// 重新从磁盘加载任务列表和状态,保持当前的排序与搜索条件
+    ///
+    /// find未激活时两次刷新来自同一快照(见load_views)
     pub fn reload(&mut self) -> Result<(), AppError> {
-        self.tasks =
-            list_tasks(self.store, self.sort.clone(), self.find.clone())?.unwrap_or_default();
-        self.all_tasks = self.store.load()?;
+        let views = load_views(self.store, self.sort.clone(), self.find.as_deref())?;
+        self.tasks = views.listed;
+        self.all_tasks = views.all;
         let selected = match self.list_state.selected() {
             Some(i) if !self.tasks.is_empty() => Some(i.min(self.tasks.len() - 1)),
             None if !self.tasks.is_empty() => Some(0),
