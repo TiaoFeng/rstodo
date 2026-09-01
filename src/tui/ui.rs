@@ -29,7 +29,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if frame.area().width < 60 || frame.area().height < 16 {
         frame.render_widget(Block::default().style(THEME.base_style()), frame.area());
         frame.render_widget(
-            Paragraph::new("Terminal too small (minimum 60 x 16)")
+            Paragraph::new("<'_> Terminal too small (minimum 60 x 16)")
                 .style(THEME.muted())
                 .alignment(Alignment::Center),
             centered_rect(frame.area(), frame.area().width, 1),
