@@ -11,6 +11,7 @@ mod tests {
             app::{self, App, AppState},
             form_state::{FormData, FormField, FormMode},
             handler, ui,
+            views::task_options::TaskOpMenu,
         },
     };
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -598,6 +599,137 @@ mod tests {
         assert_eq!(
             app.status_counts(deadline + chrono::Duration::seconds(1)).3,
             1
+        );
+    }
+
+    /// content/deadline与搜索框共用一套编辑按键: home/end 同样可用
+    #[test]
+    fn single_line_home_end() {
+        let guard = TempGuard::new("single_line_home_end");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        // ctrl+a进入add表单: content输入"abc" -> home插入X -> end插入Y
+        handler::handle_key(&mut app, ctrl('a'));
+        assert!(matches!(
+            app.form().map(|form| form.mode),
+            Some(FormMode::Add)
+        ));
+        for c in "abc".chars() {
+            handler::handle_key(&mut app, key(KeyCode::Char(c)));
+        }
+        handler::handle_key(&mut app, key(KeyCode::Home));
+        handler::handle_key(&mut app, key(KeyCode::Char('X')));
+        assert_eq!(app.form().unwrap().content, "Xabc");
+        assert_eq!(app.form().unwrap().content_cursor, 1);
+        handler::handle_key(&mut app, key(KeyCode::End));
+        handler::handle_key(&mut app, key(KeyCode::Char('Y')));
+        assert_eq!(app.form().unwrap().content, "XabcY");
+        assert_eq!(app.form().unwrap().content_cursor, 5);
+
+        // tab两次切到deadline, home/end 同样生效
+        handler::handle_key(&mut app, key(KeyCode::Tab)); // description
+        handler::handle_key(&mut app, key(KeyCode::Tab)); // deadline
+        assert_eq!(app.form().unwrap().focus, FormField::Deadline);
+        for c in "2026".chars() {
+            handler::handle_key(&mut app, key(KeyCode::Char(c)));
+        }
+        handler::handle_key(&mut app, key(KeyCode::Home));
+        handler::handle_key(&mut app, key(KeyCode::Char('1')));
+        assert_eq!(app.form().unwrap().deadline, "12026");
+        assert_eq!(app.form().unwrap().deadline_cursor, 1);
+    }
+
+    /// 搜索框的 home/end 与表单单行输入框行为一致
+    #[test]
+    fn search_input_home_end() {
+        let guard = TempGuard::new("tui_search_home_end");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        handler::handle_key(&mut app, ctrl('p'));
+        handler::handle_key(&mut app, key(KeyCode::Enter)); // search
+        for c in "task".chars() {
+            handler::handle_key(&mut app, key(KeyCode::Char(c)));
+        }
+        handler::handle_key(&mut app, key(KeyCode::Home));
+        assert_eq!(app.search_cursor, 0);
+        handler::handle_key(&mut app, key(KeyCode::Char('X')));
+        assert_eq!(app.search_input, "Xtask");
+        handler::handle_key(&mut app, key(KeyCode::End));
+        handler::handle_key(&mut app, key(KeyCode::Char('Y')));
+        assert_eq!(app.search_input, "XtaskY");
+        assert_eq!(app.search_cursor, 6);
+    }
+
+    /// 任务列表与选项菜单统一支持 j/k 移动
+    #[test]
+    fn jk_moves_in_list_and_menu() {
+        let guard = TempGuard::new("tui_jk_move");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        // 主界面: j/k 与 ↓/↑ 等价
+        handler::handle_key(&mut app, key(KeyCode::Char('j')));
+        assert_eq!(app.list_state.selected(), Some(1));
+        handler::handle_key(&mut app, key(KeyCode::Char('j')));
+        assert_eq!(app.list_state.selected(), Some(0)); // 循环回顶部
+        handler::handle_key(&mut app, key(KeyCode::Char('k')));
+        assert_eq!(app.list_state.selected(), Some(1)); // 循环到底部
+
+        // 多选模式: 同样支持 j/k
+        handler::handle_key(&mut app, ctrl('p'));
+        handler::handle_key(&mut app, key(KeyCode::Down)); // add
+        handler::handle_key(&mut app, key(KeyCode::Down)); // multiple choices
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+        assert!(matches!(app.state, AppState::MultiSelect));
+        handler::handle_key(&mut app, key(KeyCode::Char('j')));
+        assert_eq!(app.list_state.selected(), Some(0));
+
+        // 选项菜单: j/k 移动菜单光标
+        handler::handle_key(&mut app, key(KeyCode::Char(' ')));
+        assert!(app.multi_selected.contains(&1));
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+        assert!(app.multi_menu_open);
+        assert_eq!(app.menu_index, 0);
+        handler::handle_key(&mut app, key(KeyCode::Char('j'))); // undone
+        assert_eq!(app.menu_index, 1);
+        handler::handle_key(&mut app, key(KeyCode::Char('k')));
+        assert_eq!(app.menu_index, 0);
+        handler::handle_key(&mut app, key(KeyCode::Esc));
+        assert!(!app.multi_menu_open);
+        assert!(matches!(app.state, AppState::MultiSelect));
+    }
+
+    /// 菜单首项标签(done/undone)与回车执行的动作一致
+    #[test]
+    fn task_options_label_matches_action() {
+        let guard = TempGuard::new("tui_label_matches_action");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        // 未完成: 首项显示 Done, 回车后置为完成
+        assert!(!app.selected_done());
+        assert_eq!(TaskOpMenu::StatusChange.label(false), "Done");
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+        assert!(store.load().unwrap()[0].is_complete());
+        assert!(
+            app.message
+                .as_deref()
+                .is_some_and(|m| m.contains("Task 1 done"))
+        );
+
+        // 已完成: 首项显示 Undone, 回车后置为未完成, 提示与标签一致
+        assert!(app.selected_done());
+        assert_eq!(TaskOpMenu::StatusChange.label(true), "Undone");
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+        assert!(!store.load().unwrap()[0].is_complete());
+        assert!(
+            app.message
+                .as_deref()
+                .is_some_and(|m| m.contains("Task 1 undone"))
         );
     }
 

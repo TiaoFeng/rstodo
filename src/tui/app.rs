@@ -43,6 +43,14 @@ pub enum ConfirmAction {
     Undo(Vec<Task>),
 }
 
+/// Task可以进行的操作
+#[derive(Clone, Copy)]
+pub enum TaskAction {
+    Complete,
+    Incomplete,
+    Delete,
+}
+
 /// TUI应用状态
 pub struct App<'a> {
     pub store: &'a TaskStore,
@@ -110,6 +118,13 @@ impl<'a> App<'a> {
         };
         app.consume_notice();
         Ok(app)
+    }
+
+    /// 返回当前选中任务是否已完成
+    ///
+    /// 菜单首项的标签(done/undone)与状态切换的目标动作共同使用此判定, 保证显示与执行一致
+    pub fn selected_done(&self) -> bool {
+        self.selected_task().is_some_and(|(_, t)| t.is_complete())
     }
 
     /// 重新从磁盘加载任务列表和状态,保持当前的排序与搜索条件

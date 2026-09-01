@@ -121,6 +121,17 @@ impl FormData {
         form
     }
 
+    /// 返回当前聚焦的单行输入框(content/deadline)的文本与光标
+    ///
+    /// 多行文本框和priority返回None
+    pub fn single_field_mut(&mut self) -> Option<(&mut String, &mut usize)> {
+        match self.focus {
+            FormField::Content => Some((&mut self.content, &mut self.content_cursor)),
+            FormField::Deadline => Some((&mut self.deadline, &mut self.deadline_cursor)),
+            FormField::Description | FormField::Priority => None,
+        }
+    }
+
     /// 在description光标处插入字符(含换行符)
     pub fn desc_insert(&mut self, c: char) {
         insert_at_cursor(&mut self.description, &mut self.desc_cursor, c);

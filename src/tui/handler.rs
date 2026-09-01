@@ -29,23 +29,15 @@ use crate::{
         undo_task_preview,
     },
     tui::{
-        app::{App, AppState, ConfirmAction},
+        app::{App, AppState, ConfirmAction, TaskAction},
         form_state::{FormData, FormField, FormMode},
         text::{backspace_at_cursor, insert_at_cursor, move_cursor_left, move_cursor_right},
         views::{
             settings_options::SettingMenu,
-            task_options::{MultiOpMenu, TaskOpMenu, items},
+            task_options::{MultiOpMenu, TaskOpMenu},
         },
     },
 };
-
-#[derive(Clone, Copy)]
-enum TaskAction {
-    Complete,
-    Incomplete,
-    Toggle,
-    Delete,
-}
 
 /// 判断按键是否带有ctrl/alt组合
 ///
@@ -57,13 +49,67 @@ fn has_ctrl_or_alt(key: &KeyEvent) -> bool {
         .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
 }
 
+/// 光标上下移动
+///
+/// 方向键(↑/↓)与vim风格(j/k)的统一抽象, 列表与菜单共用
+/// 这样所有上下移动的地方都可以用j/k而不用反复声明
+enum Move {
+    Back,
+    Next,
+}
+
+/// 列表移动按键绑定方法
+///
+/// 可以使用 ↑|↓ 键和 'j' 'k' 移动光标
+fn catch_key_for_list_move(key: &KeyEvent) -> Option<Move> {
+    match key.code {
+        KeyCode::Up => Some(Move::Back),
+        KeyCode::Down => Some(Move::Next),
+        // 不允许 ctrl / alt 混合输入
+        KeyCode::Char(c) if !has_ctrl_or_alt(key) => match c.to_ascii_lowercase() {
+            'k' => Some(Move::Back),
+            'j' => Some(Move::Next),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// task菜单中光标移动方法
+///
+/// 可以使用 ↑|↓ 键和 'j' 'k' 移动光标
+fn task_move(app: &mut App, key: &KeyEvent) -> bool {
+    let Some(m) = catch_key_for_list_move(key) else {
+        return false;
+    };
+    match m {
+        Move::Back => app.select_back(),
+        Move::Next => app.select_next(),
+    }
+    true
+}
+
+/// 菜单中光标移动方法
+///
+/// 可以使用 ↑|↓ 键和 'j' 'k' 移动光标
+/// 长度由调用方直接输入，而不每次都取一次 len()
+fn menu_move(app: &mut App, key: &KeyEvent, len: usize) -> bool {
+    let Some(m) = catch_key_for_list_move(key) else {
+        return false;
+    };
+    match m {
+        Move::Back => app.menu_back(len),
+        Move::Next => app.menu_next(len),
+    }
+    true
+}
+
 /// 使用稳定 ID 在一次文件锁内定位并修改任务，避免长驻 TUI 的缓存序号失效。
 fn apply_to_tasks(
     app: &App,
     task_refs: &[(usize, usize)], // (显示序号, 稳定 ID)
     action: TaskAction,
-) -> Result<Option<bool>, AppError> {
-    let mut toggled_to = None;
+) -> Result<(), AppError> {
     app.store.update_with_backup(|tasks| {
         let mut positions = Vec::with_capacity(task_refs.len());
         for &(no, id) in task_refs {
@@ -87,18 +133,6 @@ fn apply_to_tasks(
                     tasks[position].incomplete();
                 }
             }
-            TaskAction::Toggle => {
-                let Some(&position) = positions.first() else {
-                    return Ok(());
-                };
-                if tasks[position].is_complete() {
-                    tasks[position].incomplete();
-                    toggled_to = Some(false);
-                } else {
-                    tasks[position].complete();
-                    toggled_to = Some(true);
-                }
-            }
             TaskAction::Delete => {
                 for position in positions.into_iter().rev() {
                     tasks.remove(position);
@@ -107,7 +141,7 @@ fn apply_to_tasks(
         }
         Ok(())
     })?;
-    Ok(toggled_to)
+    Ok(())
 }
 
 /// 键盘事件分发入口
@@ -132,6 +166,25 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
     if let Err(err) = result {
         app.set_message(format!(":( {}", err.pack_to_tui_err()));
     }
+}
+
+/// 切换单个任务的完成状态
+///
+/// 目标状态与任务菜单首项标签同样由当前状态产生
+fn toggle_status(app: &mut App, no: usize, id: usize) -> Result<(), AppError> {
+    let done = app.selected_done();
+    let target = if done {
+        TaskAction::Incomplete
+    } else {
+        TaskAction::Complete
+    };
+    apply_to_tasks(app, &[(no, id)], target)?;
+    app.set_message(if done {
+        format!("~_ Task {} undone", no)
+    } else {
+        format!("^_ Task {} done", no)
+    });
+    app.reload()
 }
 
 /// 主界面
@@ -190,10 +243,10 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
         }
         return Ok(());
     }
+    if task_move(app, &key) {
+        return Ok(());
+    }
     match key.code {
-        // 把单字符的判断移动到后面，组合是否按下ctrl/alt统一判断
-        KeyCode::Up => app.select_back(),
-        KeyCode::Down => app.select_next(),
         // pgup/pgdn翻页查看详情面板的长description
         KeyCode::PageUp => {
             app.details_scroll = app.details_scroll.saturating_sub(app.details_page.max(1));
@@ -215,8 +268,6 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
         // 单字符快捷键: 不允许与ctrl/alt组合(如alt+q不应退出), 大小写不敏感
         KeyCode::Char(c) if !has_ctrl_or_alt(&key) => match c.to_ascii_lowercase() {
             'q' => app.should_quit = true,
-            'k' => app.select_back(),
-            'j' => app.select_next(),
             'r' => {
                 app.reload()?;
                 app.set_message(">>> Refreshed");
@@ -226,12 +277,7 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                 let Some((no, task)) = app.selected_task().cloned() else {
                     return Ok(());
                 };
-                if apply_to_tasks(app, &[(no, task.id())], TaskAction::Toggle)? == Some(false) {
-                    app.set_message(format!("~_ Task {} undone", no));
-                } else {
-                    app.set_message(format!("^_ Task {} done", no));
-                }
-                app.reload()?;
+                toggle_status(app, no, task.id())?;
             }
             _ => {}
         },
@@ -242,11 +288,11 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 
 /// enter进入的选中task选项菜单: done|undone / change / delete
 fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
-    let items_len = items(app).len();
+    if menu_move(app, &key, TaskOpMenu::ALL.len()) {
+        return Ok(());
+    }
     match key.code {
         KeyCode::Esc => app.state = AppState::Main,
-        KeyCode::Up => app.menu_back(items_len),
-        KeyCode::Down => app.menu_next(items_len),
         KeyCode::Enter => {
             let Some((no, task)) = app.selected_task().cloned() else {
                 app.state = AppState::Main;
@@ -258,12 +304,7 @@ fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
             match action {
                 // done | undone
                 TaskOpMenu::StatusChange => {
-                    if apply_to_tasks(app, &[(no, task.id())], TaskAction::Toggle)? == Some(false) {
-                        app.set_message(format!("~_ Task {} undone", no));
-                    } else {
-                        app.set_message(format!("^_ Task {} done", no));
-                    }
-                    app.reload()?;
+                    toggle_status(app, no, task.id())?;
                     app.state = AppState::Main;
                 }
                 // change
@@ -286,10 +327,11 @@ fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 
 /// ctrl+p命令面板： search / add / multiple choices / delete all done / exit
 fn handle_settings(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
+    if menu_move(app, &key, SettingMenu::ALL.len()) {
+        return Ok(());
+    }
     match key.code {
         KeyCode::Esc => app.state = AppState::Main,
-        KeyCode::Up => app.menu_back(SettingMenu::ALL.len()),
-        KeyCode::Down => app.menu_next(SettingMenu::ALL.len()),
         KeyCode::Enter => {
             let Some(action) = SettingMenu::ALL.get(app.menu_index) else {
                 return Ok(());
@@ -325,6 +367,21 @@ fn handle_settings(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     Ok(())
 }
 
+/// 单行输入框的通用编辑按键
+///
+///  ←/→/home/end 移动光标, backspace 删除, 可打印字符插入。
+fn edit_line(key: KeyEvent, value: &mut String, cursor: &mut usize) {
+    match key.code {
+        KeyCode::Left => move_cursor_left(value, cursor),
+        KeyCode::Right => move_cursor_right(value, cursor),
+        KeyCode::Home => *cursor = 0,
+        KeyCode::End => *cursor = value.chars().count(),
+        KeyCode::Backspace => backspace_at_cursor(value, cursor),
+        KeyCode::Char(c) if !has_ctrl_or_alt(&key) => insert_at_cursor(value, cursor, c),
+        _ => {}
+    }
+}
+
 /// 命令面板内嵌搜索输入框
 fn handle_search(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     match key.code {
@@ -346,21 +403,9 @@ fn handle_search(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                 None => app.set_message("Search cleared"),
             }
         }
-        KeyCode::Left => move_cursor_left(&app.search_input, &mut app.search_cursor),
-        KeyCode::Right => move_cursor_right(&app.search_input, &mut app.search_cursor),
-        KeyCode::Home => app.search_cursor = 0,
-        KeyCode::End => app.search_cursor = app.search_input.chars().count(),
-        KeyCode::Backspace => {
-            backspace_at_cursor(&mut app.search_input, &mut app.search_cursor);
+        _ => {
+            edit_line(key, &mut app.search_input, &mut app.search_cursor);
         }
-        KeyCode::Char(c)
-            if !key
-                .modifiers
-                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-        {
-            insert_at_cursor(&mut app.search_input, &mut app.search_cursor, c)
-        }
-        _ => {}
     }
     Ok(())
 }
@@ -370,13 +415,14 @@ fn handle_multi(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     if app.multi_menu_open {
         return handle_multi_menu(app, key);
     }
+    if task_move(app, &key) {
+        return Ok(());
+    }
     match key.code {
         KeyCode::Esc => {
             app.multi_selected.clear();
             app.state = AppState::Main;
         }
-        KeyCode::Up => app.select_back(),
-        KeyCode::Down => app.select_next(),
         KeyCode::Char(' ') => {
             if let Some((_, task)) = app.selected_task() {
                 let id = task.id();
@@ -400,10 +446,11 @@ fn handle_multi(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 
 /// 多选确认后的done/undone/delete选项菜单
 fn handle_multi_menu(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
+    if menu_move(app, &key, MultiOpMenu::ALL.len()) {
+        return Ok(());
+    }
     match key.code {
         KeyCode::Esc => app.multi_menu_open = false,
-        KeyCode::Up => app.menu_back(MultiOpMenu::ALL.len()),
-        KeyCode::Down => app.menu_next(MultiOpMenu::ALL.len()),
         KeyCode::Enter => {
             let task_refs: Vec<(usize, usize)> = app
                 .tasks
@@ -412,16 +459,12 @@ fn handle_multi_menu(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                 .map(|(no, task)| (*no, task.id()))
                 .collect();
             let count = task_refs.len();
-            let Some(action) = MultiOpMenu::ALL.get(app.menu_index) else {
+            // 动作与标签同样由菜单项枚举派生
+            let Some(op) = MultiOpMenu::ALL.get(app.menu_index) else {
                 return Ok(());
             };
-            match action {
-                MultiOpMenu::Done => apply_to_tasks(app, &task_refs, TaskAction::Complete)?,
-                MultiOpMenu::Undone => apply_to_tasks(app, &task_refs, TaskAction::Incomplete)?,
-                MultiOpMenu::Delete => apply_to_tasks(app, &task_refs, TaskAction::Delete)?,
-            };
-            let action_name = action.label();
-            app.set_message(format!(">>> {} task(s) {}", count, action_name));
+            apply_to_tasks(app, &task_refs, op.action())?;
+            app.set_message(format!(">>> {} task(s) {}", count, op.label()));
             app.multi_selected.clear();
             app.multi_menu_open = false;
             app.reload()?;
@@ -517,74 +560,59 @@ fn handle_form(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     let AppState::Form(form) = &mut app.state else {
         return Ok(());
     };
+
     match key.code {
         // 统一使用tab循环切换输入栏: content -> description -> deadline -> priority -> content
         KeyCode::Tab => form.focus = form.focus.next(),
         KeyCode::BackTab => form.focus = form.focus.back(),
-        // 方向键只用于移动光标: description栏在多行文本中移动(自动滚动/软换行)
-        KeyCode::Enter if form.focus == FormField::Description => form.desc_insert('\n'),
-        KeyCode::Up if form.focus == FormField::Description => form.desc_up(),
-        KeyCode::Down if form.focus == FormField::Description => form.desc_down(),
-        KeyCode::Left if form.focus == FormField::Description => form.desc_left(),
-        KeyCode::Right if form.focus == FormField::Description => form.desc_right(),
-        KeyCode::Backspace if form.focus == FormField::Description => form.desc_backspace(),
-        KeyCode::Char(c)
-            if form.focus == FormField::Description
-                && !key
-                    .modifiers
-                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-        {
-            form.desc_insert(c)
-        }
-        // priority栏使用左右键切换优先级
-        KeyCode::Right if form.focus == FormField::Priority => {
-            form.priority = match form.priority {
-                Priority::High => Priority::Low,
-                Priority::Medium => Priority::High,
-                Priority::Low => Priority::Medium,
-            };
-        }
-        KeyCode::Left if form.focus == FormField::Priority => {
-            form.priority = match form.priority {
-                Priority::High => Priority::Medium,
-                Priority::Medium => Priority::Low,
-                Priority::Low => Priority::High,
-            };
-        }
-        // content/deadline单行输入框: 左右键移动光标
-        KeyCode::Left if form.focus != FormField::Priority => {
-            let (field, cursor) = single_field_mut(form);
-            move_cursor_left(field, cursor);
-        }
-        KeyCode::Right if form.focus != FormField::Priority => {
-            let (field, cursor) = single_field_mut(form);
-            move_cursor_right(field, cursor);
-        }
-        KeyCode::Backspace if form.focus != FormField::Priority => {
-            let (field, cursor) = single_field_mut(form);
-            backspace_at_cursor(field, cursor);
-        }
-        KeyCode::Char(c)
-            if form.focus != FormField::Priority
-                && !key
-                    .modifiers
-                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-        {
-            let (field, cursor) = single_field_mut(form);
-            insert_at_cursor(field, cursor, c);
-        }
         _ => {}
     }
-    Ok(())
-}
 
-/// 返回当前聚焦的单行输入框(content/deadline)的文本与光标(调用前需判断focus为Content或Deadline)
-fn single_field_mut(form: &mut FormData) -> (&mut String, &mut usize) {
     match form.focus {
-        FormField::Content => (&mut form.content, &mut form.content_cursor),
-        FormField::Deadline => (&mut form.deadline, &mut form.deadline_cursor),
-        _ => unreachable!(),
+        // 单行输入content和deadline套用一套逻辑
+        FormField::Content | FormField::Deadline => {
+            if let Some((value, cursor)) = form.single_field_mut() {
+                edit_line(key, value, cursor);
+            }
+        }
+        FormField::Description => match key.code {
+            // 方向键只用于移动光标: description栏在多行文本中移动(自动滚动/软换行)
+            KeyCode::Enter => form.desc_insert('\n'),
+            KeyCode::Up => form.desc_up(),
+            KeyCode::Down => form.desc_down(),
+            KeyCode::Left => form.desc_left(),
+            KeyCode::Right => form.desc_right(),
+            KeyCode::Backspace => form.desc_backspace(),
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                form.desc_insert(c)
+            }
+            _ => {}
+        },
+        // priority栏使用左右键循环切换优先级
+        FormField::Priority => match key.code {
+            // priority栏使用左右键切换优先级
+            KeyCode::Right if form.focus == FormField::Priority => {
+                form.priority = match form.priority {
+                    Priority::High => Priority::Low,
+                    Priority::Medium => Priority::High,
+                    Priority::Low => Priority::Medium,
+                };
+            }
+            KeyCode::Left if form.focus == FormField::Priority => {
+                form.priority = match form.priority {
+                    Priority::High => Priority::Medium,
+                    Priority::Medium => Priority::Low,
+                    Priority::Low => Priority::High,
+                };
+            }
+            _ => {}
+        },
     }
+    Ok(())
 }
 
 /// ctrl+s保存表单
