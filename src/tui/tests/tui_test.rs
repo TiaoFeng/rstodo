@@ -160,15 +160,16 @@ mod tests {
         handler::handle_key(&mut app, key(KeyCode::Down)); // multiple choices
         handler::handle_key(&mut app, key(KeyCode::Enter));
         assert!(matches!(app.state, AppState::MultiSelect));
+        // esc清除过滤后选中跟随任务本身(用户在过滤视图里看的是task2),而非回到原位置
         handler::handle_key(&mut app, key(KeyCode::Char(' ')));
-        assert!(app.multi_selected.contains(&1));
+        assert!(app.multi_selected.contains(&2));
         handler::handle_key(&mut app, key(KeyCode::Enter));
         assert!(app.multi_menu_open);
         handler::handle_key(&mut app, key(KeyCode::Down)); // undone
         handler::handle_key(&mut app, key(KeyCode::Down)); // delete
         handler::handle_key(&mut app, key(KeyCode::Enter));
         assert_eq!(store.load().unwrap().len(), 1);
-        assert_eq!(store.load().unwrap()[0].content(), "task2");
+        assert_eq!(store.load().unwrap()[0].content(), "task1");
 
         // q退出
         handler::handle_key(&mut app, key(KeyCode::Char('q')));
@@ -633,6 +634,9 @@ mod tests {
 
         handler::handle_key(&mut app, ctrl('e'));
         delete_task(vec![1], &store).unwrap();
+        // 用户已修改content: 走合并路径,TaskNotFound时表单保留
+        // (未改动的保存走No changes快速路径,见untouched_form_save_reports_no_changes)
+        handler::handle_key(&mut app, key(KeyCode::Char('X')));
         handler::handle_key(&mut app, ctrl('s'));
 
         assert!(app.form().is_some());
@@ -641,6 +645,278 @@ mod tests {
                 .is_some_and(|text| text.contains("Task not found"))
         );
         render(&mut app); // 错误状态仍可正常渲染表单
+    }
+
+    /// 表单与外部进程修改不同字段时能够合并: 用户改的字段写入,未改的字段保留磁盘值
+    #[test]
+    fn change_form_merges_with_external_field_edits() {
+        let guard = TempGuard::new("tui_edit_merge_fields");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        handler::handle_key(&mut app, ctrl('e'));
+        // 另一进程修改用户不会碰的字段(priority)
+        store
+            .update_with_backup(|tasks| {
+                tasks[0].set_priority(Priority::Low);
+                Ok(())
+            })
+            .unwrap();
+
+        // 用户修改content后保存
+        handler::handle_key(&mut app, key(KeyCode::Char('X')));
+        handler::handle_key(&mut app, ctrl('s'));
+
+        assert!(matches!(app.state, AppState::Main));
+        let tasks = store.load().unwrap();
+        assert_eq!(tasks[0].content(), "task1X"); // 用户修改生效
+        assert_eq!(tasks[0].priority(), Priority::Low); // 外部修改保留
+        assert_eq!(tasks[0].description(), Some("desc1"));
+    }
+
+    /// 双方都修改了description时拒绝保存: 外部值保持不变,表单保留等待重开
+    #[test]
+    fn change_form_rejects_same_field_conflict() {
+        let guard = TempGuard::new("tui_edit_conflict");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        handler::handle_key(&mut app, ctrl('e'));
+        // 另一进程修改了与用户相同的字段(description)
+        store
+            .update_with_backup(|tasks| {
+                tasks[0].set_description(Some("external".to_string()));
+                Ok(())
+            })
+            .unwrap();
+
+        // 用户也修改description: tab切到description栏输入
+        handler::handle_key(&mut app, key(KeyCode::Tab));
+        handler::handle_key(&mut app, key(KeyCode::Char('X')));
+        handler::handle_key(&mut app, ctrl('s'));
+
+        // 保存被拒: 表单保留,footer提示冲突,磁盘未被写入
+        assert!(app.form().is_some());
+        assert!(
+            app.message()
+                .is_some_and(|text| text.contains("changed elsewhere"))
+        );
+        let tasks = store.load().unwrap();
+        assert_eq!(tasks[0].description(), Some("external"));
+        assert_eq!(tasks[0].content(), "task1");
+    }
+
+    /// 外部进程只切换完成状态时表单可正常保存,完成状态不属于表单字段不会被覆盖
+    #[test]
+    fn change_form_save_preserves_external_status_change() {
+        let guard = TempGuard::new("tui_edit_status_free");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        handler::handle_key(&mut app, ctrl('e'));
+        // 另一进程把任务标记为完成
+        store
+            .update_with_backup(|tasks| {
+                tasks[0].complete();
+                Ok(())
+            })
+            .unwrap();
+
+        // 用户修改content后保存
+        handler::handle_key(&mut app, key(KeyCode::Char('X')));
+        handler::handle_key(&mut app, ctrl('s'));
+
+        assert!(matches!(app.state, AppState::Main));
+        let tasks = store.load().unwrap();
+        assert_eq!(tasks[0].content(), "task1X"); // 用户修改生效
+        assert!(tasks[0].is_complete()); // 外部的完成状态保留
+    }
+
+    /// 外部修改后未刷新的TUI打开表单且不改动任何内容: 保存不写盘,如实提示No changes,
+    /// 磁盘保持外部值,刷新后列表可见外部修改(旧实现误报">>> Task 1 changed")
+    #[test]
+    fn untouched_form_save_reports_no_changes() {
+        let guard = TempGuard::new("tui_form_untouched");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        // 另一进程修改priority, TUI不刷新
+        store
+            .update_with_backup(|tasks| {
+                tasks[0].set_priority(Priority::Low);
+                Ok(())
+            })
+            .unwrap();
+        handler::handle_key(&mut app, ctrl('e'));
+        // 用户不修改任何内容,直接保存
+        handler::handle_key(&mut app, ctrl('s'));
+
+        assert!(matches!(app.state, AppState::Main));
+        assert!(app.message().is_some_and(|m| m.contains("No changes")));
+        // 磁盘未被TUI触碰,保持外部值
+        assert_eq!(store.load().unwrap()[0].priority(), Priority::Low);
+        // 刷新后列表与统计追上外部修改
+        assert_eq!(app.tasks()[0].1.priority(), Priority::Low);
+    }
+
+    /// 打开change表单时按稳定ID重读磁盘: 外部修改在预填中可见,而非陈旧缓存值
+    #[test]
+    fn open_change_form_prefills_fresh_disk_values() {
+        let guard = TempGuard::new("tui_form_fresh_prefill");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        // 另一进程修改priority与description, TUI不刷新
+        store
+            .update_with_backup(|tasks| {
+                tasks[0].set_priority(Priority::Low);
+                tasks[0].set_description(Some("external".to_string()));
+                Ok(())
+            })
+            .unwrap();
+        handler::handle_key(&mut app, ctrl('e'));
+
+        // 表单预填的是磁盘当前值而非陈旧缓存值,显示序号按当前文件位置重算
+        let form = app.form().unwrap();
+        assert_eq!(form.priority(), Priority::Low);
+        assert_eq!(form.description().value(), "external");
+        assert!(matches!(form.mode(), FormMode::Change { no: 1, .. }));
+    }
+
+    /// 任务已被并发删除时,打开表单阶段即报TaskNotFound,不再先开表单再在保存时失败
+    #[test]
+    fn open_change_form_reports_deleted_task_immediately() {
+        let guard = TempGuard::new("tui_form_open_deleted");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        delete_task(vec![1], &store).unwrap();
+        handler::handle_key(&mut app, ctrl('e'));
+
+        assert!(app.form().is_none());
+        assert!(matches!(app.state, AppState::Main));
+        assert!(app.message().is_some_and(|m| m.contains("Task not found")));
+    }
+
+    /// reload后选中跟随任务本身: 外部进程重排顺序时,选中的仍是用户当时看着的任务
+    /// 任务被删除时回退到夹紧的旧位置,与旧行为一致
+    #[test]
+    fn reload_keeps_selection_on_the_same_task() {
+        let guard = TempGuard::new("tui_selection_follows_task");
+        let store = setup_store(&guard);
+        add_task(&store, "task3".to_string(), None, None, None).unwrap();
+        let mut app = App::new(&store).unwrap();
+
+        // 移动光标到第三项(task3)
+        handler::handle_key(&mut app, key(KeyCode::Down));
+        handler::handle_key(&mut app, key(KeyCode::Down));
+        assert_eq!(app.tasks()[2].1.content(), "task3");
+
+        // 另一进程把task3挪到队首(模拟外部重排)
+        store
+            .update_with_backup(|tasks| {
+                let task = tasks.remove(2);
+                tasks.insert(0, task);
+                Ok(())
+            })
+            .unwrap();
+        app.reload().unwrap();
+
+        // 选中跟随task3到新位置0,而不是停在旧下标2(那里现在是task2)
+        assert_eq!(app.list_state.selected(), Some(0));
+        assert_eq!(app.selected_task().unwrap().1.content(), "task3");
+
+        // 选中任务被外部删除: 回退到夹紧的旧位置(此时选中下标为0,
+        // task3删除后原位置显示的就是上移后的task1,与"保持同一行"的旧行为一致)
+        delete_task(vec![1], &store).unwrap(); // 删除队首的task3
+        app.reload().unwrap();
+        assert_eq!(app.list_state.selected(), Some(0));
+        assert_eq!(app.selected_task().unwrap().1.content(), "task1");
+    }
+
+    /// 选中任务未变化时reload保留详情滚动位置(定时同步不打断pgdn阅读);
+    /// 选中变化时仍归零
+    #[test]
+    fn reload_preserves_details_scroll_when_selection_unchanged() {
+        let guard = TempGuard::new("tui_reload_scroll");
+        let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Tui);
+        let long_desc = (0..40)
+            .map(|i| format!("description line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        add_task(&store, "long".to_string(), Some(long_desc), None, None).unwrap();
+        add_task(&store, "task2".to_string(), None, None, None).unwrap();
+        let mut app = App::new(&store).unwrap();
+        render(&mut app); // 测得页大小
+
+        // pgdn产生滚动
+        handler::handle_key(&mut app, key(KeyCode::PageDown));
+        render(&mut app);
+        assert!(app.details_scroll > 0);
+
+        // 外部进程只改另一个任务的内容,选中任务不变: reload保留滚动
+        store
+            .update_with_backup(|tasks| {
+                tasks[1].set_content("changed".to_string());
+                Ok(())
+            })
+            .unwrap();
+        app.reload().unwrap();
+        assert!(app.details_scroll > 0, "选中任务未变,滚动位置应保留");
+
+        // 切换选中任务: 归零(现有行为)
+        handler::handle_key(&mut app, key(KeyCode::Down));
+        assert_eq!(app.details_scroll, 0);
+    }
+
+    /// 距上次同步超过SYNC_INTERVAL时auto_sync从磁盘刷新,未到点则不动作
+    #[test]
+    fn auto_sync_refreshes_after_interval() {
+        let guard = TempGuard::new("tui_auto_sync");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        // 外部进程追加一个任务
+        add_task(&store, "external".to_string(), None, None, None).unwrap();
+
+        // 未到点: 不刷新,列表仍为2项
+        app.auto_sync().unwrap();
+        assert_eq!(app.tasks().len(), 2);
+
+        // 回拨定时器到已到点: 刷新,列表追上外部修改
+        app.backdate_sync_timer();
+        app.auto_sync().unwrap();
+        assert_eq!(app.tasks().len(), 3);
+        assert_eq!(app.tasks()[2].1.content(), "external");
+    }
+
+    /// 表单入口先同步再开: 背景列表与表单同源一致
+    #[test]
+    fn open_form_syncs_list_with_disk() {
+        let guard = TempGuard::new("tui_form_entry_sync");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        // 另一进程追加任务并修改task1的优先级, TUI不刷新
+        add_task(&store, "external".to_string(), None, None, None).unwrap();
+        store
+            .update_with_backup(|tasks| {
+                tasks[0].set_priority(Priority::Low);
+                Ok(())
+            })
+            .unwrap();
+
+        // ctrl+a: 列表同步后再开add表单
+        handler::handle_key(&mut app, ctrl('a'));
+        assert!(app.form().is_some());
+        assert_eq!(app.tasks().len(), 3, "打开add表单前列表已同步");
+
+        // esc回主界面, ctrl+e: 表单与列表同源
+        handler::handle_key(&mut app, key(KeyCode::Esc));
+        handler::handle_key(&mut app, ctrl('e'));
+        let form = app.form().unwrap();
+        assert_eq!(form.priority(), Priority::Low, "表单预填外部修改后的值");
+        assert_eq!(app.tasks().len(), 3, "打开change表单前列表已同步");
     }
 
     #[test]

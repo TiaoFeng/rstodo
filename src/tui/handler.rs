@@ -160,6 +160,51 @@ fn apply_to_tasks(
     Ok(())
 }
 
+/// 字段级三方合并: 按快照(orig)/磁盘(disk)/表单(form_v)决定单字段的写入
+///
+/// - 表单值与快照一致(用户未改该字段): 保留磁盘当前值,防止覆盖外部修改
+/// - 用户已改且磁盘未变(或双方改成了相同结果): 写入表单值
+/// - 双方都改了同一字段且结果不同: EditConflict
+fn merge_field<T: PartialEq>(
+    orig: &T,
+    disk: &T,
+    form_v: &T,
+    write: impl FnOnce(),
+) -> Result<(), AppError> {
+    if form_v == orig {
+        return Ok(());
+    }
+    if disk == orig || disk == form_v {
+        write();
+        Ok(())
+    } else {
+        Err(AppError::EditConflict)
+    }
+}
+
+/// 打开change表单: 先同步列表再按稳定ID预填,避免用陈旧缓存
+///
+/// 一次reload同时刷新背景列表/状态统计/序号列,表单与列表同源;
+/// ID在reload前从选中项捕获,外部进程重排时表单仍作用于用户选中的那个任务;
+/// 任务已被并发删除时在打开阶段即报TaskNotFound,而不是等到保存时才失败
+fn open_change_form(app: &mut App, cached_no: usize, id: usize) -> Result<(), AppError> {
+    app.reload()?;
+    let Some((no, task)) = app.tasks().iter().find(|(_, t)| t.id() == id) else {
+        return Err(AppError::TaskNotFound { no: cached_no });
+    };
+    app.state = AppState::Form(FormData::change(*no, task));
+    Ok(())
+}
+
+/// 打开add表单: 先同步列表再进入表单
+///
+/// add表单不引用已有任务,同步只为背景列表/统计/计数标题与磁盘一致
+fn open_add_form(app: &mut App) -> Result<(), AppError> {
+    app.reload()?;
+    app.state = AppState::Form(FormData::add());
+    Ok(())
+}
+
 /// 键盘事件分发入口
 ///
 /// 所有业务错误不在此处抛出,而是转化为底部提示信息
@@ -215,9 +260,7 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     }
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
-            KeyCode::Char('a') => {
-                app.state = AppState::Form(FormData::add());
-            }
+            KeyCode::Char('a') => open_add_form(app)?,
             KeyCode::Char('d') => {
                 let Some((no, task)) = app.selected_task().cloned() else {
                     app.state = AppState::Main;
@@ -242,7 +285,7 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                     app.state = AppState::Main;
                     return Ok(());
                 };
-                app.state = AppState::Form(FormData::change(no, &task));
+                open_change_form(app, no, task.id())?;
             }
             KeyCode::Char('p') => {
                 app.state = AppState::Settings;
@@ -320,7 +363,7 @@ fn handle_task_options(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                 }
                 // change
                 TaskOpMenu::Change => {
-                    app.state = AppState::Form(FormData::change(no, &task));
+                    open_change_form(app, no, task.id())?;
                 }
                 // delete
                 TaskOpMenu::Delete => {
@@ -352,9 +395,7 @@ fn handle_settings(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                     app.search_line = InputLine::new(app.find.clone().unwrap_or_default());
                     app.state = AppState::SearchInput;
                 }
-                SettingMenu::Add => {
-                    app.state = AppState::Form(FormData::add());
-                }
+                SettingMenu::Add => open_add_form(app)?,
                 SettingMenu::MultipleChoices => {
                     app.multi_selected.clear();
                     app.multi_menu_open = false;
@@ -646,6 +687,19 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
             }
         },
     };
+    // 用户未改任何字段 ⟺ 合并零写入(merge_field只在form_v==orig时不写):
+    // 跳过写盘,仅刷新视图让外部修改可见,并如实提示未发生修改
+    if let (FormMode::Change { .. }, Some(orig)) = (form.mode(), form.original())
+        && content == orig.content()
+        && description.as_deref() == orig.description()
+        && deadline == orig.deadline()
+        && form.priority() == orig.priority()
+    {
+        app.state = AppState::Main;
+        app.reload()?;
+        app.set_message(">>> No changes");
+        return Ok(());
+    }
     let message = match form.mode() {
         FormMode::Add => {
             add_task(
@@ -658,16 +712,38 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
             ">>> Task added".to_string()
         }
         FormMode::Change { no, id } => {
-            // 表单预填了所有字段,保存时全部应用: 留空的desc/deadline视为清除
+            // Change模式构造时必带原始快照,此分支仅为类型完备
+            let Some(orig) = form.original() else {
+                return Ok(());
+            };
+            // 字段级乐观合并: 逐字段比较快照/磁盘当前值/表单值
+            // - 用户未改的字段保留磁盘值(外部对未改字段的修改不会被覆盖)
+            // - 仅双方都改了同一字段且结果不同才报EditConflict
+            // - completed不属于表单字段,外部切换完成状态不会冲突也不会被覆盖
+            // 任一字段冲突时闭包返回Err,update在覆写文件前中止,磁盘零改动
             app.store.update_with_backup(|tasks| {
                 let task = tasks
                     .iter_mut()
                     .find(|task| task.id() == id)
                     .ok_or(AppError::TaskNotFound { no })?;
-                task.set_content(content);
-                task.set_description(description);
-                task.set_deadline(deadline);
-                task.set_priority(form.priority());
+                merge_field(
+                    &orig.content().to_string(),
+                    &task.content().to_string(),
+                    &content,
+                    || task.set_content(content.clone()),
+                )?;
+                merge_field(
+                    &orig.description().map(str::to_string),
+                    &task.description().map(str::to_string),
+                    &description,
+                    || task.set_description(description.clone()),
+                )?;
+                merge_field(&orig.deadline(), &task.deadline(), &deadline, || {
+                    task.set_deadline(deadline)
+                })?;
+                merge_field(&orig.priority(), &task.priority(), &form.priority(), || {
+                    task.set_priority(form.priority())
+                })?;
                 Ok(())
             })?;
             format!(">>> Task {} changed", no)

@@ -51,11 +51,17 @@ pub fn run(store: &TaskStore) -> Result<(), AppError> {
     Ok(())
 }
 
-/// 主循环: 绘制界面并分发键盘事件,定时刷新时钟
+/// 主循环: 绘制界面并分发键盘事件,定时刷新时钟,超时自动同步磁盘
 fn main_loop(terminal: &mut DefaultTerminal, store: &TaskStore) -> Result<(), AppError> {
     let mut app = App::new(store)?;
     while !app.should_quit() {
         app.expire_message();
+        // 自动同步的错误降级为footer消息: 一次瞬时读失败不得中断TUI
+        if let Err(err) = app.auto_sync() {
+            app.set_message(format!(":( {}", err.pack_to_tui_err()));
+        }
+        // 自动同步的备份恢复路径会在非按键时刻产生notice,同样需要消费
+        app.consume_notice();
         terminal.draw(|frame| ui::draw(frame, &mut app))?;
         if event::poll(Duration::from_millis(250))? {
             match event::read()? {

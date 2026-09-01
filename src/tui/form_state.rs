@@ -72,6 +72,8 @@ pub struct FormData {
     description: TextArea,
     deadline: InputLine,
     priority: Priority,
+    /// 打开表单时的原始Task快照(仅Change模式,Add模式为None),保存时用于字段级三方合并
+    original: Option<Task>,
     /// 当前聚焦的输入框的类型
     pub focus: FormField,
 }
@@ -85,6 +87,7 @@ impl FormData {
             description: TextArea::new(String::new(), DESC_VISIBLE_LINES, DESC_INIT_WRAP_WIDTH),
             deadline: InputLine::new(String::new()),
             priority: Priority::default(),
+            original: None,
             focus: FormField::Content,
         }
     }
@@ -103,6 +106,7 @@ impl FormData {
             description: TextArea::new(description, DESC_VISIBLE_LINES, DESC_INIT_WRAP_WIDTH),
             deadline: InputLine::new(deadline),
             priority: task.priority(),
+            original: Some(task.clone()),
             focus: FormField::Content,
         }
     }
@@ -144,6 +148,11 @@ impl FormData {
 
     pub fn priority(&self) -> Priority {
         self.priority
+    }
+
+    /// 打开表单时的原始Task快照(仅Change模式有值)
+    pub fn original(&self) -> Option<&Task> {
+        self.original.as_ref()
     }
 
     /// priority栏左右键循环切换优先级

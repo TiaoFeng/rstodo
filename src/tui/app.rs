@@ -51,6 +51,12 @@ pub enum TaskAction {
     Delete,
 }
 
+/// 自动同步间隔: 距上次同步超过该时长时,主循环自动从磁盘刷新一次
+///
+/// 长驻TUI与多个CLI进程共享同一份task.json,后台定时刷新使外部修改
+/// 无需用户操作即可在界面上可见
+const SYNC_INTERVAL: Duration = Duration::from_secs(2);
+
 /// TUI应用状态
 pub struct App<'a> {
     pub store: &'a TaskStore,
@@ -88,6 +94,8 @@ pub struct App<'a> {
     pub details_page: usize,
     /// 暂存待删除的任务ID，用于ctrl+d二次确认
     pub pending_delete: Option<usize>,
+    /// 上次从磁盘同步的时刻,超过SYNC_INTERVAL时主循环触发自动同步
+    last_sync: Instant,
     should_quit: bool,
 }
 
@@ -141,6 +149,7 @@ impl<'a> App<'a> {
             details_scroll: 0,
             details_page: 10,
             pending_delete: None,
+            last_sync: Instant::now(),
             should_quit: false,
         };
         app.consume_notice();
@@ -175,20 +184,56 @@ impl<'a> App<'a> {
 
     /// 重新从磁盘加载任务列表和状态,保持当前的排序与搜索条件
     ///
-    /// find未激活时两次刷新来自同一快照(见load_views)
+    /// find未激活时两次刷新来自同一快照(见load_views);
+    /// 刷新后选中跟随任务本身(按稳定ID重新定位)而非位置,外部进程增删/重排时
+    /// 选中的仍是用户当时看着的那个任务,任务消失时回退到夹紧的旧位置;
+    /// 选中任务未变化时保留详情面板滚动位置,避免后台定时刷新打断pgdn阅读
     pub fn reload(&mut self) -> Result<(), AppError> {
+        // 刷新前先记住用户选中的任务与位置
+        let prev = self.list_state.selected().and_then(|i| self.tasks.get(i));
+        let prev_id = prev.map(|(_, t)| t.id());
+        let prev_index = self.list_state.selected();
+
         let views = load_views(self.store, self.sort.clone(), self.find.as_deref())?;
         self.tasks = views.listed;
         self.all_tasks = views.all;
-        let selected = match self.list_state.selected() {
-            Some(i) if !self.tasks.is_empty() => Some(i.min(self.tasks.len() - 1)),
-            None if !self.tasks.is_empty() => Some(0),
-            _ => None,
+
+        let selected = match prev_id {
+            Some(id) => self
+                .tasks
+                .iter()
+                .position(|(_, t)| t.id() == id)
+                // 任务已消失: 回退到旧位置并夹紧,与旧行为一致
+                .or_else(|| {
+                    prev_index
+                        .filter(|_| !self.tasks.is_empty())
+                        .map(|i| i.min(self.tasks.len() - 1))
+                }),
+            // 刷新前无选中: 列表非空时选中首项
+            None => prev_index
+                .filter(|_| !self.tasks.is_empty())
+                .map(|i| i.min(self.tasks.len() - 1)),
         };
         self.list_state.select(selected);
-        // 任务列表刷新后详情面板回到顶部
-        self.details_scroll = 0;
+        // 刷新前后展示的任务不同(选中变化或列表空↔非空)时详情面板回到顶部;
+        // 同一任务的背景刷新保留滚动位置,避免定时同步打断pgdn阅读
+        let now_id = selected.and_then(|i| self.tasks.get(i).map(|(_, t)| t.id()));
+        if now_id != prev_id {
+            self.details_scroll = 0;
+        }
+        self.last_sync = Instant::now();
         Ok(())
+    }
+
+    /// 距上次同步超过SYNC_INTERVAL时自动从磁盘刷新
+    ///
+    /// 由主循环每个循环周期调用; 错误由调用方降级为footer消息而不中断程序
+    pub fn auto_sync(&mut self) -> Result<(), AppError> {
+        if self.last_sync.elapsed() >= SYNC_INTERVAL {
+            self.reload()
+        } else {
+            Ok(())
+        }
     }
 
     /// 光标上移一项(循环)
@@ -295,5 +340,11 @@ impl<'a> App<'a> {
                 self.store.interface_type(),
             ));
         }
+    }
+
+    /// 把同步定时器回拨到"已到点"状态,仅供测试
+    #[cfg(test)]
+    pub(crate) fn backdate_sync_timer(&mut self) {
+        self.last_sync = Instant::now() - SYNC_INTERVAL;
     }
 }

@@ -54,6 +54,8 @@ pub enum AppError {
     DeleteConflict,
     // 恢复文件预览与现状冲突
     UndoConflict,
+    // 编辑冲突: 表单保存时任务被其他进程修改了相同字段
+    EditConflict,
     // Tui渲染相关错误，仅供Tui使用
     Tui(std::io::Error),
 }
@@ -175,6 +177,16 @@ impl AppError {
                     write!(
                         f,
                         "Task list changed since the delete preview, please run 'delete alldone' again"
+                    )
+                }
+            }
+            AppError::EditConflict => {
+                if is_short {
+                    write!(f, "Task changed elsewhere, please reopen the form")
+                } else {
+                    write!(
+                        f,
+                        "Task changed since the form was opened, please reopen the form to see the latest values"
                     )
                 }
             }
