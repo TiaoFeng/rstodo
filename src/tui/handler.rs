@@ -103,6 +103,23 @@ fn menu_move(app: &mut App, key: &KeyEvent, len: usize) -> bool {
     true
 }
 
+/// 详情面板翻页按键(pgup上翻/pgdn下翻),步长为渲染时测得的可见行数
+///
+/// 规则: 详情面板完整可见的状态(Main/MultiSelect/SortMode)统一响应翻页;
+/// 弹窗遮挡面板的状态(TaskOptions/Settings/Confirm)与输入状态(SearchInput/Form)不响应
+fn detail_scroll(app: &mut App, key: &KeyEvent) -> bool {
+    match key.code {
+        KeyCode::PageUp => {
+            app.details_scroll = app.details_scroll.saturating_sub(app.details_page.max(1));
+        }
+        KeyCode::PageDown => {
+            app.details_scroll = app.details_scroll.saturating_add(app.details_page.max(1));
+        }
+        _ => return false,
+    }
+    true
+}
+
 /// 使用稳定 ID 在一次文件锁内定位并修改任务，避免长驻 TUI 的缓存序号失效。
 fn apply_to_tasks(
     app: &App,
@@ -244,14 +261,10 @@ fn handle_main(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     if task_move(app, &key) {
         return Ok(());
     }
+    if detail_scroll(app, &key) {
+        return Ok(());
+    }
     match key.code {
-        // pgup/pgdn翻页查看详情面板的长description
-        KeyCode::PageUp => {
-            app.details_scroll = app.details_scroll.saturating_sub(app.details_page.max(1));
-        }
-        KeyCode::PageDown => {
-            app.details_scroll = app.details_scroll.saturating_add(app.details_page.max(1));
-        }
         KeyCode::Enter => {
             if app.selected_task().is_some() {
                 app.state = AppState::TaskOptions;
@@ -414,6 +427,9 @@ fn handle_multi(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
     if task_move(app, &key) {
         return Ok(());
     }
+    if detail_scroll(app, &key) {
+        return Ok(());
+    }
     match key.code {
         KeyCode::Esc => {
             app.multi_selected.clear();
@@ -514,6 +530,9 @@ fn handle_confirm(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
 
 /// ctrl+l排序模式: p按优先级排序, d按截止日期排序
 fn handle_sort(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
+    if detail_scroll(app, &key) {
+        return Ok(());
+    }
     match key.code {
         KeyCode::Esc => app.state = AppState::Main,
         // 不允许ctrl/alt的按键组合，只允许选择排序方式或者esc退出;

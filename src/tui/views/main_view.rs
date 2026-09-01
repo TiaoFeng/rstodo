@@ -15,7 +15,6 @@ use crate::{
     time::to_local_time,
     tui::{
         app::{App, AppState},
-        text::wrap_rows,
         theme::THEME,
         ui::priority_style,
     },
@@ -230,6 +229,8 @@ fn draw_details(frame: &mut Frame, app: &mut App, area: Rect) {
         .style(THEME.base_style());
 
     let Some((no, task)) = app.selected_task() else {
+        // 无选中任务即无滚动状态,防止空列表下pgdn持续累积
+        app.details_scroll = 0;
         let empty = Paragraph::new(Line::from(Span::styled(
             "'_? No task selected",
             THEME.muted(),
@@ -281,20 +282,14 @@ fn draw_details(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    // 计算软换行后的总显示行数,渲染时夹紧滚动偏移,避免翻页过头后出现空白
+    // 页大小为边框内可见行数
     let inner = block.inner(area);
     app.details_page = inner.height as usize;
-    let total_rows: usize = lines
-        .iter()
-        .map(|line| {
-            let text: String = line
-                .spans
-                .iter()
-                .map(|span| span.content.as_ref())
-                .collect();
-            wrap_rows(&text, inner.width as usize).len()
-        })
-        .sum();
+    // 先测量后夹紧: line_count与scroll无关,不带block时测得纯文本行数;
+    // 夹紧完成后才构造正式Paragraph,保证本帧渲染的偏移不越界
+    let total_rows = Paragraph::new(lines.as_slice())
+        .wrap(Wrap { trim: false })
+        .line_count(inner.width);
     app.details_scroll = app
         .details_scroll
         .min(total_rows.saturating_sub(app.details_page));
@@ -328,7 +323,9 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         }
         AppState::TaskOptions | AppState::Settings => " ↑/↓ move  enter select  esc back",
         AppState::SearchInput => " type keyword  enter apply  esc back",
-        AppState::MultiSelect => " ↑/↓ move  space select  enter confirm  esc cancel",
+        AppState::MultiSelect => {
+            " ↑/↓ move  space select  enter confirm  pgup/pgdn scroll  esc cancel"
+        }
         AppState::SortMode => " sort by: [p]riority [d]eadline [n]one   esc cancel",
         AppState::Form(_) => {
             " tab next field  enter newline(desc)  ←/→ priority  ^S save  esc cancel"

@@ -21,7 +21,8 @@ chrono = { version = "0.4.45" , features = ["serde"]}
 comfy-table = "8.0.0"
 dirs = "6"
 crossterm = "0.29"
-ratatui = "0.30.2"
+# unstable-rendered-line-info: Paragraph::line_count用于详情面板翻页的精确行数测量
+ratatui = { version = "0.30.2", features = ["unstable-rendered-line-info"] }
 unicode-segmentation = "1"
 
 # The profile that 'dist' will build with

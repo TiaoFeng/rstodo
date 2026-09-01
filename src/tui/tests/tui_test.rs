@@ -51,6 +51,14 @@ mod tests {
         terminal.draw(|frame| ui::draw(frame, app)).unwrap();
     }
 
+    /// 渲染一帧并取回缓冲区,用于检查实际渲染内容(而非仅状态变量)
+    fn render_capture(app: &mut App) -> ratatui::buffer::Buffer {
+        let backend = TestBackend::new(120, 35);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|frame| ui::draw(frame, app)).unwrap();
+        terminal.backend().buffer().clone()
+    }
+
     /// 所有界面状态都能无panic渲染
     #[test]
     fn smoke_render_all_states() {
@@ -233,6 +241,72 @@ mod tests {
         // 短description任务翻页不产生滚动
         handler::handle_key(&mut app, key(KeyCode::PageDown));
         render(&mut app);
+        assert_eq!(app.details_scroll, 0);
+    }
+
+    /// 含空格的超长英文行: 渲染按词边界换行,行数统计用line_count与渲染一致,
+    /// 含空格的超长英文行: 渲染按词边界换行,行数统计用line_count与渲染一致,
+    /// 连续pgdn到底后scroll不再增长; 且到达最大偏移的那一帧渲染的是内容而非越界空白
+    #[test]
+    fn details_scroll_clamps_at_word_wrapped_bottom() {
+        let guard = TempGuard::new("tui_details_word_wrap");
+        let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Tui);
+        // 单行约1840字符,120宽终端下详情面板约70列,词边界换行后远超一页(25行)
+        let long_line = "the quick brown fox jumps over the lazy dog. ".repeat(40);
+        add_task(&store, "prose".to_string(), Some(long_line), None, None).unwrap();
+        let mut app = App::new(&store).unwrap();
+        let _ = render_capture(&mut app);
+
+        // 连续pgdn直到夹紧: 第二次到底后scroll不再增长
+        handler::handle_key(&mut app, key(KeyCode::PageDown));
+        let buffer = render_capture(&mut app); // 旧缺陷恰好在此帧渲染越界空白
+        let first = app.details_scroll;
+        handler::handle_key(&mut app, key(KeyCode::PageDown));
+        let second_buffer = render_capture(&mut app);
+        let second = app.details_scroll;
+        assert!(first > 0);
+        assert_eq!(first, second, "连续pgdn应停在夹紧的最大偏移");
+
+        // 夹紧后的帧必须真的显示内容: 详情面板内区底行(y=32)与首行(y=8)均非空白
+        // (120x35: 列表区下方为详情面板,边框内区x=49..119,y=8..33)
+        for (name, buffer) in [("first", &buffer), ("second", &second_buffer)] {
+            let bottom_row = &buffer.content[(32 * 120 + 49)..(32 * 120 + 119)];
+            let top_row = &buffer.content[(8 * 120 + 49)..(8 * 120 + 119)];
+            assert!(
+                bottom_row.iter().any(|cell| cell.symbol() != " "),
+                "{name}帧夹紧后详情面板底行不应是空白"
+            );
+            assert!(
+                top_row.iter().any(|cell| cell.symbol() != " "),
+                "{name}帧夹紧后详情面板首行不应是空白"
+            );
+        }
+    }
+
+    /// 多选模式下详情面板同样可pgup/pgdn翻页,移动光标后滚动归零
+    #[test]
+    fn multi_select_details_scroll() {
+        let guard = TempGuard::new("tui_multi_scroll");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        handler::handle_key(&mut app, ctrl('p'));
+        handler::handle_key(&mut app, key(KeyCode::Down)); // add
+        handler::handle_key(&mut app, key(KeyCode::Down)); // multiple choices
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+        assert!(matches!(app.state, AppState::MultiSelect));
+
+        // pgdn翻页: 步长为渲染时测得的页大小
+        render(&mut app);
+        handler::handle_key(&mut app, key(KeyCode::PageDown));
+        assert_eq!(app.details_scroll, app.details_page);
+
+        // 移动光标后滚动归零(与主界面一致)
+        handler::handle_key(&mut app, key(KeyCode::Char('j')));
+        assert_eq!(app.details_scroll, 0);
+
+        // pgup从顶部不会下溢
+        handler::handle_key(&mut app, key(KeyCode::PageUp));
         assert_eq!(app.details_scroll, 0);
     }
 
