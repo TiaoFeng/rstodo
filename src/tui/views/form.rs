@@ -142,23 +142,17 @@ fn draw_text_field(
 /// 文本按显式\n分行,超宽部分软换行显示;内容超过三行时随光标滚动,保持可见窗口高度不变
 fn draw_description_field(frame: &mut Frame, form: &mut FormData, area: Rect) {
     let focused = form.focus == FormField::Description;
-    // 文本区宽度随布局变化,渲染时更新供编辑逻辑计算软换行
+    // 文本区宽度随布局变化,渲染时更新: 宽度变化后窗口由TextArea自行夹紧
     let text_width = (area.width as usize).saturating_sub(LABEL_WIDTH as usize);
-    form.set_desc_wrap_width(text_width);
-    form.adjust_desc_scroll();
+    let desc = form.description_mut();
+    desc.set_wrap_width(text_width);
 
-    let texts: Vec<String> = form
-        .desc_rows()
+    let texts: Vec<String> = desc
+        .rows()
         .iter()
-        .map(|&(start, end)| {
-            form.description()
-                .chars()
-                .skip(start)
-                .take(end - start)
-                .collect()
-        })
+        .map(|&(start, end)| desc.value().chars().skip(start).take(end - start).collect())
         .collect();
-    let scroll = form.desc_scroll();
+    let scroll = desc.scroll();
     for i in 0..DESC_VISIBLE_LINES {
         let row_area = Rect {
             y: area.y + i as u16,
@@ -175,7 +169,7 @@ fn draw_description_field(frame: &mut Frame, form: &mut FormData, area: Rect) {
         }
         match texts.get(scroll + i) {
             // 空文本框在第一行显示placeholder
-            None if form.description().is_empty() && i == 0 => {
+            None if desc.value().is_empty() && i == 0 => {
                 spans.push(Span::styled("(optional)", THEME.muted()));
             }
             Some(text) => {
@@ -186,7 +180,7 @@ fn draw_description_field(frame: &mut Frame, form: &mut FormData, area: Rect) {
         frame.render_widget(Paragraph::new(Line::from(spans)), row_area);
     }
     if focused && text_width > 0 && area.height > 0 {
-        let (row, col) = form.desc_cursor_row_col();
+        let (row, col) = desc.cursor_row_col();
         let prefix: String = texts
             .get(row)
             .map_or(String::new(), |text| text.chars().take(col).collect());

@@ -571,23 +571,26 @@ fn handle_form(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                 edit_line(key, input);
             }
         }
-        FormField::Description => match key.code {
-            // 方向键只用于移动光标: description栏在多行文本中移动(自动滚动/软换行)
-            KeyCode::Enter => form.desc_insert('\n'),
-            KeyCode::Up => form.desc_up(),
-            KeyCode::Down => form.desc_down(),
-            KeyCode::Left => form.desc_left(),
-            KeyCode::Right => form.desc_right(),
-            KeyCode::Backspace => form.desc_backspace(),
-            KeyCode::Char(c)
-                if !key
-                    .modifiers
-                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-            {
-                form.desc_insert(c)
+        FormField::Description => {
+            let desc = form.description_mut();
+            match key.code {
+                // 方向键只用于移动光标: description栏在多行文本中移动(自动滚动/软换行)
+                KeyCode::Enter => desc.insert('\n'),
+                KeyCode::Up => desc.up(),
+                KeyCode::Down => desc.down(),
+                KeyCode::Left => desc.left(),
+                KeyCode::Right => desc.right(),
+                KeyCode::Backspace => desc.backspace(),
+                KeyCode::Char(c)
+                    if !key
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                {
+                    desc.insert(c)
+                }
+                _ => {}
             }
-            _ => {}
-        },
+        }
         // priority栏使用左右键循环切换优先级
         FormField::Priority => match key.code {
             KeyCode::Right => form.cycle_priority(true),
@@ -610,7 +613,7 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
         app.set_message(":( Invalid content: content cannot be left blank.");
         return Ok(());
     }
-    let description = match form.description().trim() {
+    let description = match form.description().value().trim() {
         "" => None,
         desc => Some(desc.to_string()),
     };

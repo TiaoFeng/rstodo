@@ -85,8 +85,8 @@ mod tests {
                 input.insert(c);
             }
         }
-        form.desc_insert('\n');
-        form.desc_insert('x');
+        form.description_mut().insert('\n');
+        form.description_mut().insert('x');
         app.state = AppState::Form(form);
         render(&mut app);
 
@@ -190,7 +190,7 @@ mod tests {
         ));
         let form = app.form().unwrap();
         assert_eq!(form.content(), "task1");
-        assert_eq!(form.description(), "desc1");
+        assert_eq!(form.description().value(), "desc1");
 
         // esc取消返回主界面
         handler::handle_key(&mut app, key(KeyCode::Esc));
@@ -241,50 +241,50 @@ mod tests {
     fn test_description_multiline_edit() {
         let mut form = FormData::add();
         for c in "line1\nline2\nline3\nline4".chars() {
-            form.desc_insert(c);
+            form.description_mut().insert(c);
         }
         // 光标在第4行末尾,可见窗口向上滚动保持3行
-        assert_eq!(form.desc_cursor_row_col(), (3, 5));
-        assert_eq!(form.desc_scroll(), 1);
+        assert_eq!(form.description().cursor_row_col(), (3, 5));
+        assert_eq!(form.description().scroll(), 1);
 
         // 上移光标回到第一行,窗口随之滚回顶部
-        form.desc_up();
-        form.desc_up();
-        form.desc_up();
-        assert_eq!(form.desc_cursor_row_col(), (0, 5));
-        assert_eq!(form.desc_scroll(), 0);
+        form.description_mut().up();
+        form.description_mut().up();
+        form.description_mut().up();
+        assert_eq!(form.description().cursor_row_col(), (0, 5));
+        assert_eq!(form.description().scroll(), 0);
         // 顶部继续上移保持不变
-        form.desc_up();
-        assert_eq!(form.desc_cursor_row_col(), (0, 5));
+        form.description_mut().up();
+        assert_eq!(form.description().cursor_row_col(), (0, 5));
 
         // 在第一行中间插入字符,编辑上面的文字
-        form.desc_backspace();
-        assert!(form.description().starts_with("line\n"));
+        form.description_mut().backspace();
+        assert!(form.description().value().starts_with("line\n"));
 
         // 行首退格与上一行合并
         let mut form = FormData::add();
         for c in "ab".chars() {
-            form.desc_insert(c);
+            form.description_mut().insert(c);
         }
-        form.desc_insert('\n');
-        assert_eq!(form.desc_cursor_row_col(), (1, 0));
-        form.desc_backspace();
-        assert_eq!(form.description(), "ab");
-        assert_eq!(form.desc_cursor_row_col(), (0, 2));
+        form.description_mut().insert('\n');
+        assert_eq!(form.description().cursor_row_col(), (1, 0));
+        form.description_mut().backspace();
+        assert_eq!(form.description().value(), "ab");
+        assert_eq!(form.description().cursor_row_col(), (0, 2));
 
         // 移动到较短行时列位置截断
         let mut form = FormData::add();
         for c in "abcd\nx".chars() {
-            form.desc_insert(c);
+            form.description_mut().insert(c);
         }
-        form.desc_up();
-        assert_eq!(form.desc_cursor_row_col(), (0, 1));
+        form.description_mut().up();
+        assert_eq!(form.description().cursor_row_col(), (0, 1));
         // 插入字符使列变长后下移,列截断到短行长度
         for c in "XYZ".chars() {
-            form.desc_insert(c);
+            form.description_mut().insert(c);
         }
-        form.desc_down();
-        assert_eq!(form.desc_cursor_row_col(), (1, 1));
+        form.description_mut().down();
+        assert_eq!(form.description().cursor_row_col(), (1, 1));
 
         // change表单预填多行description,光标在末尾且窗口滚到底部
         let task = Task::new(
@@ -295,42 +295,42 @@ mod tests {
             Priority::Low,
         );
         let form = FormData::change(1, &task);
-        assert_eq!(form.desc_cursor_row_col(), (4, 1));
-        assert_eq!(form.desc_scroll(), 2);
+        assert_eq!(form.description().cursor_row_col(), (4, 1));
+        assert_eq!(form.description().scroll(), 2);
     }
 
     /// description软换行: 超宽自动换行显示但不写入\n,上下键在显示行间移动
     #[test]
     fn test_description_soft_wrap() {
         let mut form = FormData::add();
-        form.set_desc_wrap_width(5);
+        form.description_mut().set_wrap_width(5);
         for c in "abcdefgh".chars() {
-            form.desc_insert(c);
+            form.description_mut().insert(c);
         }
         // 8字符按宽度5软换行为两个显示行,文本中没有\n
-        assert_eq!(form.description(), "abcdefgh");
-        assert_eq!(form.desc_rows(), vec![(0, 5), (5, 8)]);
-        assert_eq!(form.desc_cursor_row_col(), (1, 3));
+        assert_eq!(form.description().value(), "abcdefgh");
+        assert_eq!(form.description().rows(), vec![(0, 5), (5, 8)]);
+        assert_eq!(form.description().cursor_row_col(), (1, 3));
 
         // 上下键在软换行出的显示行间移动
-        form.desc_up();
-        assert_eq!(form.desc_cursor_row_col(), (0, 3));
-        form.desc_down();
-        assert_eq!(form.desc_cursor_row_col(), (1, 3));
+        form.description_mut().up();
+        assert_eq!(form.description().cursor_row_col(), (0, 3));
+        form.description_mut().down();
+        assert_eq!(form.description().cursor_row_col(), (1, 3));
 
         // 显式换行与软换行共存
-        form.desc_insert('\n');
-        form.desc_insert('x');
-        assert_eq!(form.description(), "abcdefgh\nx");
-        assert_eq!(form.desc_rows(), vec![(0, 5), (5, 8), (9, 10)]);
-        assert_eq!(form.desc_cursor_row_col(), (2, 1));
+        form.description_mut().insert('\n');
+        form.description_mut().insert('x');
+        assert_eq!(form.description().value(), "abcdefgh\nx");
+        assert_eq!(form.description().rows(), vec![(0, 5), (5, 8), (9, 10)]);
+        assert_eq!(form.description().cursor_row_col(), (2, 1));
 
         // 左右键跨过软换行边界
-        form.desc_left();
-        form.desc_left();
-        assert_eq!(form.desc_cursor_row_col(), (1, 3));
-        form.desc_left();
-        assert_eq!(form.desc_cursor_row_col(), (1, 2));
+        form.description_mut().left();
+        form.description_mut().left();
+        assert_eq!(form.description().cursor_row_col(), (1, 3));
+        form.description_mut().left();
+        assert_eq!(form.description().cursor_row_col(), (1, 2));
     }
 
     /// 表单内方向键只移动光标不切换栏位,tab循环切换栏位
@@ -371,14 +371,14 @@ mod tests {
         for c in "cd".chars() {
             handler::handle_key(&mut app, key(KeyCode::Char(c)));
         }
-        assert_eq!(app.form().unwrap().description(), "ab\ncd");
-        assert_eq!(app.form().unwrap().desc_cursor_row_col(), (1, 2));
+        assert_eq!(app.form().unwrap().description().value(), "ab\ncd");
+        assert_eq!(app.form().unwrap().description().cursor_row_col(), (1, 2));
         handler::handle_key(&mut app, key(KeyCode::Left)); // (1,1)
         handler::handle_key(&mut app, key(KeyCode::Left)); // (1,0)
         handler::handle_key(&mut app, key(KeyCode::Left)); // 跨行到(0,2)
-        assert_eq!(app.form().unwrap().desc_cursor_row_col(), (0, 2));
+        assert_eq!(app.form().unwrap().description().cursor_row_col(), (0, 2));
         handler::handle_key(&mut app, key(KeyCode::Right)); // 回到(1,0)
-        assert_eq!(app.form().unwrap().desc_cursor_row_col(), (1, 0));
+        assert_eq!(app.form().unwrap().description().cursor_row_col(), (1, 0));
 
         // tab循环: deadline -> priority -> content
         handler::handle_key(&mut app, key(KeyCode::Tab));
@@ -571,22 +571,21 @@ mod tests {
 
     #[test]
     fn unicode_editing_and_input_window_use_terminal_width() {
-        let mut text = "e\u{301}".to_string();
-        let mut cursor = text.chars().count();
-        crate::tui::text::backspace_at_cursor(&mut text, &mut cursor);
-        assert!(text.is_empty()); // 一次删除整个组合字素
-        assert_eq!(cursor, 0);
+        let mut input = InputLine::new("e\u{301}");
+        input.backspace();
+        assert!(input.value().is_empty()); // 一次删除整个组合字素
+        assert_eq!(input.cursor(), 0);
 
         assert_eq!(ui::display_width("e\u{301}"), 1);
         assert_eq!(ui::display_width("👩‍💻"), 2);
         assert_eq!(ui::input_window("abcdefgh", 8, 4), ("fgh".to_string(), 3));
 
         let mut form = FormData::add();
-        form.set_desc_wrap_width(2);
+        form.description_mut().set_wrap_width(2);
         for c in "e\u{301}中".chars() {
-            form.desc_insert(c);
+            form.description_mut().insert(c);
         }
-        assert_eq!(form.desc_rows(), vec![(0, 2), (2, 3)]);
+        assert_eq!(form.description().rows(), vec![(0, 2), (2, 3)]);
     }
 
     #[test]
