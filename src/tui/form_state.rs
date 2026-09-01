@@ -45,8 +45,20 @@ impl FormField {
     }
 }
 
+/// add/change表单弹窗宽度(含左右边框)
+pub const FORM_POPUP_WIDTH: u16 = 62;
+
+/// 输入框标签的显示宽度(标签12 + ": " 2)
+pub const LABEL_WIDTH: u16 = 14;
+
 /// description输入框的可见行数
 pub const DESC_VISIBLE_LINES: usize = 3;
+
+/// description文本区的初始软换行宽度
+///
+/// 由弹窗布局派生: 弹窗宽 - 左右边框2 - 标签宽; 首帧渲染前作为占位,
+/// 渲染时会以实际文本区宽度覆盖(终端过窄时实际宽度更小)
+const DESC_INIT_WRAP_WIDTH: usize = (FORM_POPUP_WIDTH - 2 - LABEL_WIDTH) as usize;
 
 /// add / change 表单数据
 ///
@@ -70,7 +82,7 @@ impl FormData {
         FormData {
             mode: FormMode::Add,
             content: InputLine::new(String::new()),
-            description: TextArea::new(String::new(), DESC_VISIBLE_LINES),
+            description: TextArea::new(String::new(), DESC_VISIBLE_LINES, DESC_INIT_WRAP_WIDTH),
             deadline: InputLine::new(String::new()),
             priority: Priority::default(),
             focus: FormField::Content,
@@ -88,7 +100,7 @@ impl FormData {
         FormData {
             mode: FormMode::Change { no, id: task.id() },
             content: InputLine::new(content),
-            description: TextArea::new(description, DESC_VISIBLE_LINES),
+            description: TextArea::new(description, DESC_VISIBLE_LINES, DESC_INIT_WRAP_WIDTH),
             deadline: InputLine::new(deadline),
             priority: task.priority(),
             focus: FormField::Content,

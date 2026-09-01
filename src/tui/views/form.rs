@@ -15,13 +15,12 @@ use ratatui::{
 
 use crate::tui::{
     app::{App, AppState},
-    form_state::{DESC_VISIBLE_LINES, FormData, FormField, FormMode},
+    form_state::{
+        DESC_VISIBLE_LINES, FORM_POPUP_WIDTH, FormData, FormField, FormMode, LABEL_WIDTH,
+    },
     theme::THEME,
     ui::{centered_rect, display_width, input_window, priority_style},
 };
-
-/// 输入框标签的显示宽度(标签12 + ": " 2)
-const LABEL_WIDTH: u16 = 14;
 
 /// 绘制add / change表单弹窗
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -33,7 +32,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         FormMode::Add => " Add Task ".to_string(),
         FormMode::Change { no, .. } => format!(" Change Task #{} ", no),
     };
-    let area = centered_rect(frame.area(), 62, 12);
+    let area = centered_rect(frame.area(), FORM_POPUP_WIDTH, 12);
     frame.render_widget(Clear, area);
 
     let block = Block::bordered()

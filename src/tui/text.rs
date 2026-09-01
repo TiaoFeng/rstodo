@@ -89,13 +89,16 @@ pub struct TextArea {
 
 impl TextArea {
     /// 以给定文本创建多行文本框,光标置于末尾并夹紧滚动窗口
-    pub fn new(value: impl Into<String>, visible_lines: usize) -> Self {
+    ///
+    /// wrap_width为软换行的初始宽度,由调用方按布局传入;
+    /// 渲染时会以实际文本区宽度调用set_wrap_width覆盖
+    pub fn new(value: impl Into<String>, visible_lines: usize, wrap_width: usize) -> Self {
         let value = value.into();
         let mut area = TextArea {
             cursor: value.chars().count(),
             value,
             scroll: 0,
-            wrap_width: 46,
+            wrap_width: wrap_width.max(1),
             visible_lines: visible_lines.max(1),
         };
         area.adjust_scroll();
