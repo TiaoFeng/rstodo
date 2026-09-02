@@ -1,12 +1,12 @@
 [package]
-name = "rstodo-TiaoFeng"
+name = "rstodo-tui"
 version = "0.5.3"
 edition = "2024"
 rust-version = "1.89.0"
 repository = "https://github.com/TiaoFeng/rstodo"
 description = "A CLI tool for managing to-do lists"
 readme = "README.md"
-keywords = ["cli", "tool", "todo"]
+keywords = ["cli", "tui", "tool", "todo"]
 license = "MIT"
 
 [[bin]]
