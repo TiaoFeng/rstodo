@@ -598,6 +598,49 @@ mod tests {
         assert!(!app.multi_selected.is_empty(), "纯space正常勾选");
     }
 
+    /// 勾选的任务全部被外部进程删除且列表已同步时,多选需要确认是否是为空:
+    /// 旧实现会以空引用集合走一遍update_with_backup,把当前状态刷进备份,
+    /// 销毁真正的undo目标,还报告操作成功
+    #[test]
+    fn multi_menu_aborts_when_selection_vanished() {
+        let guard = TempGuard::new("tui_multi_vanished");
+        let store = setup_store(&guard);
+
+        // 外部删除task1: 备份记录了undo目标(task1, task2)
+        delete_task(vec![1], &store).unwrap();
+        assert_eq!(store.load_backup().unwrap().len(), 2);
+
+        // 进入多选,勾选仅剩的task2
+        let mut app = App::new(&store).unwrap();
+        handler::handle_key(&mut app, ctrl('p'));
+        handler::handle_key(&mut app, key(KeyCode::Down)); // add
+        handler::handle_key(&mut app, key(KeyCode::Down)); // multiple choices
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+        assert!(matches!(app.state, AppState::MultiSelect));
+        handler::handle_key(&mut app, key(KeyCode::Char(' ')));
+        assert!(!app.multi_selected.is_empty());
+
+        // 外部再删掉task2,TUI自动同步: 勾选ID失效,列表为空
+        delete_task(vec![1], &store).unwrap();
+        app.reload().unwrap();
+        assert!(app.tasks().is_empty());
+        // 此刻备份是仅剩的undo目标([task2])
+        let undo_target = store.load_backup().unwrap();
+        assert_eq!(undo_target.len(), 1);
+        assert_eq!(undo_target[0].content(), "task2");
+
+        // enter展开菜单后确认: 空引用集合应中止,不写盘不刷备份
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+        assert!(app.multi_menu_open);
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+
+        assert!(!app.multi_menu_open);
+        assert!(app.multi_selected.is_empty());
+        assert!(app.message().is_some_and(|m| m.contains("no longer exist")));
+        assert_eq!(store.load_backup().unwrap(), undo_target);
+        assert!(store.load().unwrap().is_empty());
+    }
+
     /// ctrl+d二次确认: 任意其他按键解除挂起并清除常驻警告, 解除后再按ctrl+d只重新挂起
     #[test]
     fn ctrl_d_double_confirm_clears_notice() {

@@ -517,6 +517,14 @@ fn handle_multi_menu(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
             let Some(op) = MultiOpMenu::ALL.get(app.menu_index) else {
                 return Ok(());
             };
+            // 选中的任务可能已被外部进程删除且列表已同步，原来会刷新备份(覆盖undo目标)
+            // 修复后，会提前中止并如实提示
+            if task_refs.is_empty() {
+                app.multi_selected.clear();
+                app.multi_menu_open = false;
+                app.set_message(":( Selected tasks no longer exist");
+                return Ok(());
+            }
             apply_to_tasks(app, &task_refs, op.action())?;
             app.set_message(format!(">>> {} task(s) {}", count, op.label()));
             app.multi_selected.clear();
