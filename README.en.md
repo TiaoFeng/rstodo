@@ -6,7 +6,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
 
-A command-line to-do tool written in Rust. It supports adding, deleting, editing, and querying tasks, as well as managing priorities and due dates. Data is stored in JSON files. Although this project began as a practice project for the author while learning Rust, it is still being further optimized and updated. It already offers a fairly comprehensive set of features and can be used as a lightweight tool for everyday tasks.
+A command-line to-do tool with a terminal user interface (TUI) written in Rust. It supports adding, deleting, editing, and querying tasks, as well as managing priorities and due dates. Data is stored in JSON files. This project served as the author’s practice project when first learning Rust; it already offers a fairly comprehensive set of features and can be used as a lightweight tool for everyday tasks.
+
+![TUI Interface Preview](./assets/tui_screenshot.png)
 
 ## Features
 - Supports adding, editing, deleting, and marking tasks as completed or uncompleted
@@ -20,6 +22,7 @@ A command-line to-do tool written in Rust. It supports adding, deleting, editing
 - Supports searching and filtering tasks by task content, date, priority, completion status, and whether they are overdue
 - Implements local persistence using JSON files
 - Outputs formatted text in a Markdown-like style in the terminal
+- TUI Mode: Real-time clock display, four-quadrant layout, keyboard shortcuts, multi-line description editing, automatic disk synchronization
 
 ## Installation
 Download the latest precompiled version:
@@ -114,7 +117,55 @@ $ cargo run -- list
 
 +_+ No tasks
 ```
-## Command Description
+
+## TUI User Guide
+
+To enter TUI mode, simply run the command without any subcommands:
+
+```bash
+rstodo                        # Use the default data file
+rstodo --file ./my_tasks.json # Specify a data file
+```
+
+The main interface uses a four-quadrant layout:
+
+```
+┌──────────────────┬──────────────────────────────────┐
+│     Clock        │         Task Status              │
+├──────────────────┼──────────────────────────────────┤
+│                  │                                  │
+│   Task List      │         Task Details             │
+│  (Scrollable)    │                                  │
+│                  │                                  │
+└──────────────────┴──────────────────────────────────┘
+│              Bottom Button Toolbar                  │
+└─────────────────────────────────────────────────────┘
+```
+
+### Keyboard Shortcuts
+
+**Main Screen**
+
+| Button | Features |
+|---|---|
+| `↑`/`↓` or `k`/`j` | Move the cursor |
+| `Space` | Switch Complete/Not Complete |
+| `Enter` | Open the task options menu |
+| `Ctrl+A` | New Tasks |
+| `Ctrl+E` | Edit Selected Tasks |
+| `Ctrl+D` | Delete the selected task (double-click to confirm) |
+| `Ctrl+P` | Open the Command Panel |
+| `Ctrl+F` | Search |
+| `Ctrl+L` | Sorting Mode (`P` Priority / `D` Deadline / `N` Default) |
+| `PgUp`/`PgDn` | Scrollable Details Panel |
+| `R` | Refresh from disk |
+| `Q` or `Ctrl+C` | Exit |
+
+**Command Panel (`Ctrl+P`)**：Search, Add, Batch Operations, Delete All Completed Items, Undo, Exit
+
+**Form Input**：`Tab`/`Shift+Tab` to switch between fields, `Ctrl+S` to save, `Esc` to cancel
+
+## CLI Command Description
 ### Global Commands
 All commands support the following global parameters:
 ```
@@ -258,16 +309,29 @@ cargo build --release
 ## Project Structure
 ```
 src/
-├── main.rs           # CLI Command Parsing and Main Program Entry Point
-├── commands.rs       # Interaction Glue Layer for Terminal Interfaces
-├── todo.rs           # Core business code that provides business interfaces
+├── main.rs           # Program Entry Point, CLI/TUI Mode Distribution
+├── commands.rs       # CLI Command Implementation
+├── todo.rs           # Core Business Code
 ├── task.rs           # The `Task` Structure and Related Methods
 ├── time.rs           # Time Format Conversion and Time Zone Handling
-├── error.rs          # Error Types Used in the Project
-├── test_helpers.rs   # Helper Functions for Unit Testing
-└── io/
-    ├── storage.rs     # Reading and Saving a To-Do List
-    └── cli_print.rs   # Terminal table output based on comfy_table
+├── error.rs          # Error Type
+├── test_helpers.rs   # Unit Testing Helper Functions
+├── io/
+│   ├── storage.rs    # Reading and Saving a To-Do List
+│   └── cli_print.rs  # CLI Table Output
+└── tui/
+    ├── mod.rs        # TUI Entry Point and Main Loop
+    ├── app.rs        # Application State Management
+    ├── handler.rs    # Keyboard Event Dispatch
+    ├── ui.rs         # Rendering Entries and Utility Functions
+    ├── theme.rs      # Color Theme
+    ├── text.rs       # Text Editor
+    ├── form_state.rs # Form State Machine
+    └── views/
+        ├── main_view.rs        # Four-Quadrant Layout of the Main Interface
+        ├── form.rs             # Add/Edit Form
+        ├── task_options.rs     # Single-Task Options Menu
+        └── settings_options.rs # Command Panel
 ```
 
 ## License
@@ -275,6 +339,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Statement and Acknowledgments
 
-- Claude Sonnet 5, DeepSeek V4 Flash, DeepSeek V4 Pro, Mimo 2.5 Pro, and KIMI K3 provide code reviews and technical guidance.
+- Claude Sonnet 5, DeepSeek V4 Flash, DeepSeek V4 Pro, and Mimo 2.5 Pro provided code reviews and technical guidance.
+- The core code for the TUI interface was developed by Kimi K3, reviewed and optimized by GLM-5.3-Flash and Qwen3.8 Flash, and finally reviewed and submitted by me.
 - [opencode](https://github.com/anomalyco/opencode) offers excellent, open-source tools.
 - Translated with DeepL.com (free version)
