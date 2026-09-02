@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// 定义了用户可选择的两种排序方式，按照时间或优先级
-#[derive(ValueEnum, Clone)]
+#[derive(ValueEnum, Clone, Copy)]
 pub enum SortBy {
     #[value(alias = "d")]
     Deadline,
@@ -213,9 +213,8 @@ pub fn list_tasks(
         && store.interface_type() == UserInterfaceTypes::Cli
         && find.is_none()
     {
-        let order = order.clone();
         store.update_without_backup(move |tasks| {
-            sort_tasks(tasks, order, |t| t);
+            sort_tasks(tasks, *order, |t| t);
             Ok(())
         })?;
         let listed = with_display_no(&store.load()?);

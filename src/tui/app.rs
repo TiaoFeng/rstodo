@@ -190,7 +190,7 @@ impl<'a> App<'a> {
         let prev_id = prev.map(|(_, t)| t.id());
         let prev_index = self.list_state.selected();
 
-        let views = load_views(self.store, self.sort.clone(), self.find.as_deref())?;
+        let views = load_views(self.store, self.sort, self.find.as_deref())?;
         self.tasks = views.listed;
         self.all_tasks = views.all;
 
