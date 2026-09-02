@@ -111,7 +111,7 @@ impl TextArea {
         self.adjust_scroll();
     }
 
-    /// 删除光标前的一个字符(行首退格则与上一行合并)
+    /// 删除光标前的一个字簇(行首退格则与上一行合并)
     pub fn backspace(&mut self) {
         backspace_at_cursor(&mut self.value, &mut self.cursor);
         self.adjust_scroll();
@@ -208,7 +208,7 @@ fn insert_at_cursor(s: &mut String, cursor: &mut usize, c: char) {
     *cursor += 1;
 }
 
-/// 删除字符串光标前的一个字符
+/// 删除字符串光标前的一个字簇
 fn backspace_at_cursor(s: &mut String, cursor: &mut usize) {
     if *cursor == 0 {
         return;

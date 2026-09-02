@@ -23,7 +23,7 @@ pub enum AppState {
     TaskOptions,
     /// ctrl+p 命令面板
     Settings,
-    /// 命令面干内嵌搜索
+    /// 命令面板内嵌搜索
     SearchInput,
     /// 多选模式
     MultiSelect,

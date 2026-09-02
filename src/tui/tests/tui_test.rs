@@ -246,7 +246,6 @@ mod tests {
     }
 
     /// 含空格的超长英文行: 渲染按词边界换行,行数统计用line_count与渲染一致,
-    /// 含空格的超长英文行: 渲染按词边界换行,行数统计用line_count与渲染一致,
     /// 连续pgdn到底后scroll不再增长; 且到达最大偏移的那一帧渲染的是内容而非越界空白
     #[test]
     fn details_scroll_clamps_at_word_wrapped_bottom() {
