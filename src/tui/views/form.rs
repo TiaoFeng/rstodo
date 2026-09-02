@@ -16,7 +16,8 @@ use ratatui::{
 use crate::tui::{
     app::{App, AppState},
     form_state::{
-        DESC_VISIBLE_LINES, FORM_POPUP_WIDTH, FormData, FormField, FormMode, LABEL_WIDTH,
+        DESC_VISIBLE_LINES, FORM_POPUP_HEIGHT, FORM_POPUP_WIDTH, FormData, FormField, FormMode,
+        LABEL_WIDTH,
     },
     theme::THEME,
     ui::{centered_rect, display_width, input_window, priority_style},
@@ -32,7 +33,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         FormMode::Add => " Add Task ".to_string(),
         FormMode::Change { no, .. } => format!(" Change Task #{} ", no),
     };
-    let area = centered_rect(frame.area(), FORM_POPUP_WIDTH, 12);
+    let area = centered_rect(frame.area(), FORM_POPUP_WIDTH, FORM_POPUP_HEIGHT);
     frame.render_widget(Clear, area);
 
     let block = Block::bordered()

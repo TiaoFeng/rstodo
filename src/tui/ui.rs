@@ -24,14 +24,20 @@ use crate::{
     },
 };
 
+const MINIMUM_WIDTH: u16 = 60;
+const MINIMUM_HEIGHT: u16 = 16;
+
 /// 绘制入口: 绘制主界面，再按状态叠加弹窗。
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    if frame.area().width < 60 || frame.area().height < 16 {
+    if frame.area().width < MINIMUM_WIDTH || frame.area().height < MINIMUM_HEIGHT {
         frame.render_widget(Block::default().style(THEME.base_style()), frame.area());
         frame.render_widget(
-            Paragraph::new("<'_> Terminal too small (minimum 60 x 16)")
-                .style(THEME.muted())
-                .alignment(Alignment::Center),
+            Paragraph::new(format!(
+                "<'_> Terminal too small (minimum {} x {})",
+                MINIMUM_WIDTH, MINIMUM_HEIGHT
+            ))
+            .style(THEME.muted())
+            .alignment(Alignment::Center),
             centered_rect(frame.area(), frame.area().width, 1),
         );
         return;

@@ -54,6 +54,12 @@ pub const LABEL_WIDTH: u16 = 14;
 /// description输入框的可见行数
 pub const DESC_VISIBLE_LINES: usize = 3;
 
+/// add/change表单弹窗高度(含上下边框)
+///
+/// 由弹窗布局派生: 输入行与hint共5行 + DESC_VISIBLE_LINES + 上下边框2 + 底部留白2;
+/// DESC_VISIBLE_LINES增高时弹窗高度随之增长,避免行总和撑破弹窗裁掉hint区
+pub const FORM_POPUP_HEIGHT: u16 = DESC_VISIBLE_LINES as u16 + 9;
+
 /// description文本区的初始软换行宽度
 ///
 /// 由弹窗布局派生: 弹窗宽 - 左右边框2 - 标签宽; 首帧渲染前作为占位,
