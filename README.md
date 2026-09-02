@@ -6,7 +6,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
 
-一个使用 Rust 编写的命令行 todo 工具。支持任务的增、删、改、查，以及优先级与截止时间管理。数据以 JSON 文件存储。本项目虽是作者初学 Rust 的练习项目，但目前仍在进一步优化与更新，已经具备比较完善的功能，可以作为日常的轻量化工具使用。
+一个使用 Rust 编写的命令行 todo 工具与终端用户界面（TUI）。支持任务的增、删、改、查，以及优先级与截止时间管理。数据以 JSON 文件存储。本项目是作者初学 Rust 的练习项目，已经具备比较完善的功能，可以作为日常的轻量化工具使用。
+
+![TUI 界面预览](./assets/tui_screenshot.png)
 
 ## 特性
 
@@ -21,6 +23,7 @@
 - 支持根据任务内容，日期，优先级，是否完成，是否逾期查找并筛选任务
 - 基于 JSON 文件实现本地持久化
 - 终端使用类似 markdown 样式格式化输出
+- TUI 模式：实时时钟显示、四象限布局、快捷键操作、多行描述编辑、自动同步磁盘
 
 ## 安装
 
@@ -117,7 +120,54 @@ $ cargo run -- list
 +_+ No tasks
 ```
 
-## 命令说明
+## TUI 使用说明
+
+不带任何子命令运行即可进入 TUI 模式：
+
+```bash
+rstodo                        # 使用默认数据文件
+rstodo --file ./my_tasks.json # 指定数据文件
+```
+
+主界面采用四象限布局：
+
+```
+┌──────────────────┬──────────────────────────────────┐
+│   实时时钟        │         任务状态统计               │
+├──────────────────┼──────────────────────────────────┤
+│                  │                                  │
+│   任务列表        │         任务详情面板               │
+│   (可滚动)        │   (内容/优先级/截止时间/描述)        │
+│                  │                                  │
+└──────────────────┴──────────────────────────────────┘
+│                   底部按键提示栏                      │
+└─────────────────────────────────────────────────────┘
+```
+
+### 快捷键
+
+**主界面**
+
+| 按键 | 功能 |
+|---|---|
+| `↑`/`↓` 或 `k`/`j` | 移动光标 |
+| `Space` | 切换完成/未完成 |
+| `Enter` | 打开任务选项菜单 |
+| `Ctrl+A` | 新增任务 |
+| `Ctrl+E` | 编辑选中任务 |
+| `Ctrl+D` | 删除选中任务（双击确认） |
+| `Ctrl+P` | 打开命令面板 |
+| `Ctrl+F` | 搜索 |
+| `Ctrl+L` | 排序模式（`P` 优先级 / `D` 截止时间 / `N` 默认） |
+| `PgUp`/`PgDn` | 滚动详情面板 |
+| `R` | 从磁盘刷新 |
+| `Q` 或 `Ctrl+C` | 退出 |
+
+**命令面板 (`Ctrl+P`)**：搜索、新增、批量操作、删除所有已完成、撤销、退出
+
+**表单输入**：`Tab`/`Shift+Tab` 切换字段，`Ctrl+S` 保存，`Esc` 取消
+
+## CLI 命令说明
 ### 全局命令
 所有命令都支持以下全局参数：
 ```
@@ -261,16 +311,29 @@ cargo build --release
 
 ```
 src/
-├── main.rs           # CLI 命令解析与主程序入口
-├── commands.rs       # 终端界面交互胶水层
-├── todo.rs           # 业务核心代码，提供业务接口
+├── main.rs           # 程序入口，CLI/TUI 模式分发
+├── commands.rs       # CLI 命令实现
+├── todo.rs           # 业务核心代码
 ├── task.rs           # Task 结构体与相关方法
 ├── time.rs           # 时间格式转换与时区处理
-├── error.rs          # 项目中使用的错误类型
+├── error.rs          # 错误类型
 ├── test_helpers.rs   # 单元测试帮助函数
-└── io/
-    ├── storage.rs     # Todo list 的读取与保存
-    └── cli_print.rs   # 基于 comfy_table 的终端表格输出
+├── io/
+│   ├── storage.rs    # Todo list 的读取与保存
+│   └── cli_print.rs  # CLI 表格输出
+└── tui/
+    ├── mod.rs        # TUI 入口与主循环
+    ├── app.rs        # 应用状态管理
+    ├── handler.rs    # 键盘事件分发
+    ├── ui.rs         # 绘制入口与工具函数
+    ├── theme.rs      # 颜色主题
+    ├── text.rs       # 文本编辑器
+    ├── form_state.rs # 表单状态机
+    └── views/
+        ├── main_view.rs        # 主界面四象限布局
+        ├── form.rs             # 新增/编辑表单
+        ├── task_options.rs     # 单任务选项菜单
+        └── settings_options.rs # 命令面板
 ```
 
 ## License
@@ -279,5 +342,6 @@ src/
 
 ## 声明与鸣谢
 
-- Claude Sonnet 5、DeepSeek V4 Flash、DeepSeek V4 Pro、Mimo 2.5 Pro 和 KIMI K3 提供代码审查和技术指导。
+- Claude Sonnet 5、DeepSeek V4 Flash、DeepSeek V4 Pro、Mimo 2.5 Pro 提供代码审查和技术指导。
+- TUI 界面核心代码由 Kimi K3 完成，由 GLM-5.3-Flash、Qwen3.8 Flash 审查优化，本人最终审核提交。
 - [opencode](https://github.com/anomalyco/opencode) 提供优秀、开源的工具。
