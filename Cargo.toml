@@ -1,6 +1,6 @@
 [package]
 name = "rstodo-tui"
-version = "0.5.3"
+version = "1.0.0"
 edition = "2024"
 rust-version = "1.89.0"
 repository = "https://github.com/TiaoFeng/rstodo"
