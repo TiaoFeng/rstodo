@@ -159,6 +159,32 @@ pub fn with_display_no(tasks: &[Task]) -> Vec<(usize, Task)> {
         .collect()
 }
 
+/// 对已加载的任务做内存内的查找与排序，返回带原文件序号的列表（不落盘）
+///
+/// 查找与排序规则的唯一实现：list_tasks的不落盘与TUI快照渲染共用；
+/// 序号取任务在快照中的原文件位置，排序不重编序号
+pub fn view_tasks(
+    tasks: &[Task],
+    sort: Option<SortBy>,
+    find: Option<String>,
+) -> Vec<(usize, Task)> {
+    let keyword_lower = find.map(|kw| kw.to_lowercase());
+    let now = Utc::now();
+    let mut listed: Vec<(usize, Task)> = match &keyword_lower {
+        Some(kw) => tasks
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| find_tasks(t, kw, now))
+            .map(|(i, t)| (i + 1, t.clone()))
+            .collect(),
+        None => with_display_no(tasks),
+    };
+    if let Some(order) = sort {
+        sort_tasks(&mut listed, order, |(_, t)| t);
+    }
+    listed
+}
+
 /// list业务函数
 ///
 /// 传入参数sort,排序方式
@@ -180,38 +206,25 @@ pub fn list_tasks(
         return Ok(None);
     }
 
-    // 查找分支
-    let mut result_tasks: Vec<(usize, Task)> = if let Some(keyword) = &find {
-        // 如果有find参数，在内存中查找
-        let keyword_lower = keyword.to_lowercase();
-        let now = Utc::now();
-        tasks
-            .into_iter()
-            .enumerate()
-            .filter(|(_, t)| find_tasks(t, &keyword_lower, now))
-            .map(|(i, t)| (i + 1, t)) // 把查找到的任务，和他在原来tasks列表的序号，合并成元组
-            .collect()
-    } else {
-        // 没有find参数，返回带序号的列表
-        with_display_no(&tasks)
-    };
-
-    // 排序分支
-    if let Some(order) = sort {
-        // 落盘操作， 输出的序号连续且有序，更加美观：
-        // - 用户使用cli操作 && 且只进行排序
-        if store.interface_type() == UserInterfaceTypes::Cli && find.is_none() {
-            store.update_without_backup(|tasks: &mut Vec<Task>| {
-                sort_tasks(tasks, order, |t| t);
-                Ok(())
-            })?;
-            result_tasks = with_display_no(&store.load()?);
-        } else {
-            // 在内存中操作，不落盘：
-            // - 用户使用tui交互 || 既排序又查找
-            sort_tasks(&mut result_tasks, order, |(_, t)| t);
-        }
+    // 落盘操作，输出的序号连续且有序，更加美观：
+    // - 只有cli交互、排序且不查找才落盘；改写文件后按新快照重新编号返回
+    // - 落盘与重载之间外部进程可能清空列表，保留与内存路径一致的判空返回None
+    if let Some(order) = &sort
+        && store.interface_type() == UserInterfaceTypes::Cli
+        && find.is_none()
+    {
+        let order = order.clone();
+        store.update_without_backup(move |tasks| {
+            sort_tasks(tasks, order, |t| t);
+            Ok(())
+        })?;
+        let listed = with_display_no(&store.load()?);
+        return Ok((!listed.is_empty()).then_some(listed));
     }
+
+    // 内存操作，不落盘：
+    // - 用户使用tui交互 || 既排序又查找
+    let result_tasks = view_tasks(&tasks, sort, find); // 复用新增的view_tasks函数
 
     if result_tasks.is_empty() {
         return Ok(None);

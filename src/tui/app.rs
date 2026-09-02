@@ -11,7 +11,7 @@ use crate::{
     error::AppError,
     io::storage::{TaskStore, recovered_from_backup_msg},
     task::Task,
-    todo::{SortBy, list_tasks},
+    todo::{SortBy, view_tasks},
     tui::{form_state::FormData, text::InputLine},
 };
 
@@ -105,22 +105,17 @@ struct TaskViews {
     all: Vec<Task>,
 }
 
-/// 一次加载同时得到展示列表与全量任务列表
+/// 一次磁盘读取同时得到展示列表与全量任务列表
 ///
-/// find未激活时展示列表即全量列表(带序号),从同一快照反解出all_tasks,
-/// 省去第二次文件锁与解析,且保证两份视图来自同一快照;
-/// find激活时展示列表是子集,无法反解全量,all_tasks需单独加载
+/// 单次store.load锁定一份快照,展示视图由该快照经内存查找/排序得到(todo::view_tasks):
+/// 两份视图恒来自同一快照,避免统计与过滤列表因两次读取间的外部写入出现冲突
 fn load_views(
     store: &TaskStore,
     sort: Option<SortBy>,
     find: Option<&str>,
 ) -> Result<TaskViews, AppError> {
-    let listed = list_tasks(store, sort, find.map(str::to_string))?.unwrap_or_default();
-    let all = if find.is_none() {
-        listed.iter().map(|(_, t)| t.clone()).collect()
-    } else {
-        store.load()?
-    };
+    let all = store.load()?;
+    let listed = view_tasks(&all, sort, find.map(str::to_string));
     Ok(TaskViews { listed, all })
 }
 
@@ -185,7 +180,7 @@ impl<'a> App<'a> {
 
     /// 重新从磁盘加载任务列表和状态,保持当前的排序与搜索条件
     ///
-    /// find未激活时两次刷新来自同一快照(见load_views);
+    /// 两份视图恒来自同一快照(见load_views);
     /// 刷新后选中跟随任务本身(按稳定ID重新定位)而非位置,外部进程增删/重排时
     /// 选中的仍是用户当时看着的那个任务,任务消失时回退到夹紧的旧位置;
     /// 选中任务未变化时保留详情面板滚动位置,避免后台定时刷新打断pgdn阅读
