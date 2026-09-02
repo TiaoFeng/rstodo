@@ -642,13 +642,7 @@ fn handle_form(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
                 KeyCode::Left => desc.left(),
                 KeyCode::Right => desc.right(),
                 KeyCode::Backspace => desc.backspace(),
-                KeyCode::Char(c)
-                    if !key
-                        .modifiers
-                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-                {
-                    desc.insert(c)
-                }
+                KeyCode::Char(c) if !has_ctrl_or_alt(&key) => desc.insert(c),
                 _ => {}
             }
         }
