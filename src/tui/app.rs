@@ -177,7 +177,8 @@ impl<'a> App<'a> {
 
     /// 返回当前选中任务是否已完成
     ///
-    /// 菜单首项的标签(done/undone)与状态切换的目标动作共同使用此判定, 保证显示与执行一致
+    /// 仅供菜单首项标签(done/undone)派生显示; 实际切换以磁盘真值为翻转基准,
+    /// 见handler::toggle_status
     pub fn selected_done(&self) -> bool {
         self.selected_task().is_some_and(|(_, t)| t.is_complete())
     }
@@ -199,20 +200,14 @@ impl<'a> App<'a> {
         self.all_tasks = views.all;
 
         let selected = match prev_id {
+            // 任务已消失: 回退到旧位置并夹紧; 无旧位置(如空表新增)则选中首项
             Some(id) => self
                 .tasks
                 .iter()
                 .position(|(_, t)| t.id() == id)
-                // 任务已消失: 回退到旧位置并夹紧,与旧行为一致
-                .or_else(|| {
-                    prev_index
-                        .filter(|_| !self.tasks.is_empty())
-                        .map(|i| i.min(self.tasks.len() - 1))
-                }),
+                .or_else(|| self.fallback_selection(prev_index)),
             // 刷新前无选中: 列表非空时选中首项
-            None => prev_index
-                .filter(|_| !self.tasks.is_empty())
-                .map(|i| i.min(self.tasks.len() - 1)),
+            None => self.fallback_selection(prev_index),
         };
         self.list_state.select(selected);
         // 刷新前后展示的任务不同(选中变化或列表空↔非空)时详情面板回到顶部;
@@ -223,6 +218,15 @@ impl<'a> App<'a> {
         }
         self.last_sync = Instant::now();
         Ok(())
+    }
+
+    /// 兜底选中: 列表非空时取旧位置(无旧位置则首项)并夹紧到新长度
+    fn fallback_selection(&self, prev_index: Option<usize>) -> Option<usize> {
+        if self.tasks.is_empty() {
+            None
+        } else {
+            Some(prev_index.map_or(0, |i| i.min(self.tasks.len() - 1)))
+        }
     }
 
     /// 距上次同步超过SYNC_INTERVAL时自动从磁盘刷新
