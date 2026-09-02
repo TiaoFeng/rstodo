@@ -81,7 +81,11 @@ impl AppError {
     fn fmt_with(&self, f: &mut fmt::Formatter<'_>, is_short: bool) -> fmt::Result {
         match self {
             AppError::Corrupted { path, source } => {
-                write!(f, "task file '{}' is corrupted: {}", path, source)
+                if is_short {
+                    write!(f, "task file '{}' is corrupted", path)
+                } else {
+                    write!(f, "task file '{}' is corrupted: {}", path, source)
+                }
             }
             AppError::InvalidContent { input } => {
                 if is_short {

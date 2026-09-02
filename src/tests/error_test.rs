@@ -106,6 +106,16 @@ mod tests {
         };
         assert_eq!(io.pack_to_tui_err().to_string(), "failed to write to file");
 
+        // 短消息保留路径供定位--file,但不带serde解析详情
+        let corrupted = AppError::Corrupted {
+            path: "test2.json".to_string(),
+            source: create_serde_error(),
+        };
+        assert_eq!(
+            corrupted.pack_to_tui_err().to_string(),
+            "task file 'test2.json' is corrupted"
+        );
+
         assert_eq!(
             AppError::InvalidContent {
                 input: "   ".to_string()
