@@ -687,8 +687,11 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
             }
         },
     };
-    // 用户未改任何字段 ⟺ 合并零写入(merge_field只在form_v==orig时不写):
-    // 跳过写盘,仅刷新视图让外部修改可见,并如实提示未发生修改
+    // 合并快路径：
+    //
+    // 用户未改任何字段 ⟺ 合并零写入(merge_field只在form_v==orig时不写)，
+    // 跳过写盘,仅刷新视图让外部修改可见,并如实提示未发生修改。
+    // 注意：字段集须与下方 merge_field 调用保持一致。
     if let (FormMode::Change { .. }, Some(orig)) = (form.mode(), form.original())
         && content == orig.content()
         && description.as_deref() == orig.description()
@@ -700,6 +703,7 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
         app.set_message(">>> No changes");
         return Ok(());
     }
+    // 正常合并路径
     let message = match form.mode() {
         FormMode::Add => {
             add_task(
@@ -714,7 +718,8 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
         FormMode::Change { no, id } => {
             // Change模式构造时必带原始快照,此分支仅为类型完备
             let Some(orig) = form.original() else {
-                return Ok(());
+                // 改成unreachable! 此分支理论上不可达
+                unreachable!(":( Error: Change mode must have original snapshot.");
             };
             // 字段级乐观合并: 逐字段比较快照/磁盘当前值/表单值
             // - 用户未改的字段保留磁盘值(外部对未改字段的修改不会被覆盖)
@@ -728,15 +733,15 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
                     .ok_or(AppError::TaskNotFound { no })?;
                 merge_field(
                     &orig.content().to_string(),
-                    &task.content().to_string(),
+                    &task.content().to_string(), // 分配堆以释放不可变借用，避免与闭包中可变借用冲突
                     &content,
-                    || task.set_content(content.clone()),
+                    || task.set_content(content.clone()), // 需要task的可变借用
                 )?;
                 merge_field(
                     &orig.description().map(str::to_string),
-                    &task.description().map(str::to_string),
+                    &task.description().map(str::to_string), // 分配堆以释放不可变借用，避免与闭包中可变借用冲突
                     &description,
-                    || task.set_description(description.clone()),
+                    || task.set_description(description.clone()), // 需要task的可变借用
                 )?;
                 merge_field(&orig.deadline(), &task.deadline(), &deadline, || {
                     task.set_deadline(deadline)
