@@ -42,7 +42,6 @@ use crate::{
 ///
 /// 单字符快捷键(q/k/j/r、排序模式的p/d/n、确认弹窗的y/n等)使用它过滤,
 /// 防止alt+q误退出、排序模式下ctrl+p误触发排序等组合键误触。
-/// 明确操作按键规范
 fn has_ctrl_or_alt(key: &KeyEvent) -> bool {
     key.modifiers
         .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
@@ -156,27 +155,20 @@ fn apply_to_tasks(
             }
         }
         Ok(())
-    })?;
-    Ok(())
+    })
 }
 
-/// 字段级三方合并: 按快照(orig)/磁盘(disk)/表单(form_v)决定单字段的写入
+/// 字段级三方判定: 按快照(snapshot)/磁盘(disk)/表单值(form_view)决定单字段是否需要写入
 ///
-/// - 表单值与快照一致(用户未改该字段): 保留磁盘当前值,防止覆盖外部修改
-/// - 用户已改且磁盘未变(或双方改成了相同结果): 写入表单值
+/// - 表单值与快照一致(用户未改该字段): 返回false,保留磁盘当前值,防止覆盖外部修改
+/// - 用户已改且磁盘未变(或双方改成了相同结果): 返回true
 /// - 双方都改了同一字段且结果不同: EditConflict
-fn merge_field<T: PartialEq>(
-    orig: &T,
-    disk: &T,
-    form_v: &T,
-    write: impl FnOnce(),
-) -> Result<(), AppError> {
-    if form_v == orig {
-        return Ok(());
+fn conflict_check<T: PartialEq>(snapshot: T, disk: T, form_view: T) -> Result<bool, AppError> {
+    if form_view == snapshot {
+        return Ok(false);
     }
-    if disk == orig || disk == form_v {
-        write();
-        Ok(())
+    if disk == snapshot || disk == form_view {
+        Ok(true)
     } else {
         Err(AppError::EditConflict)
     }
@@ -689,9 +681,9 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
     };
     // 合并快路径：
     //
-    // 用户未改任何字段 ⟺ 合并零写入(merge_field只在form_v==orig时不写)，
+    // 用户未改任何字段 ⟺ 合并零写入(conflict_check只在form_view==snapshot时判为不写)，
     // 跳过写盘,仅刷新视图让外部修改可见,并如实提示未发生修改。
-    // 注意：字段集须与下方 merge_field 调用保持一致。
+    // 注意：字段集须与下方 conflict_check 调用保持一致。
     if let (FormMode::Change { .. }, Some(orig)) = (form.mode(), form.original())
         && content == orig.content()
         && description.as_deref() == orig.description()
@@ -717,38 +709,48 @@ fn save_form(app: &mut App) -> Result<(), AppError> {
         }
         FormMode::Change { no, id } => {
             // Change模式构造时必带原始快照,此分支仅为类型完备
-            let Some(orig) = form.original() else {
-                // 改成unreachable! 此分支理论上不可达
+            let Some(snapshot) = form.original() else {
                 unreachable!(":( Error: Change mode must have original snapshot.");
             };
-            // 字段级乐观合并: 逐字段比较快照/磁盘当前值/表单值
+            // 字段级乐观合并: 逐字段按快照/磁盘当前值/表单值决策,再统一应用
             // - 用户未改的字段保留磁盘值(外部对未改字段的修改不会被覆盖)
             // - 仅双方都改了同一字段且结果不同才报EditConflict
             // - completed不属于表单字段,外部切换完成状态不会冲突也不会被覆盖
-            // 任一字段冲突时闭包返回Err,update在覆写文件前中止,磁盘零改动
+            // 闭包内的修改只是内存暂存: 任一字段冲突时闭包返回Err,
+            // update在覆写文件前中止,已决策字段的写入随之丢弃,磁盘零改动
             app.store.update_with_backup(|tasks| {
-                let task = tasks
-                    .iter_mut()
-                    .find(|task| task.id() == id)
+                let idx = tasks
+                    .iter()
+                    .position(|task| task.id() == id)
                     .ok_or(AppError::TaskNotFound { no })?;
-                merge_field(
-                    &orig.content().to_string(),
-                    &task.content().to_string(), // 分配堆以释放不可变借用，避免与闭包中可变借用冲突
-                    &content,
-                    || task.set_content(content.clone()), // 需要task的可变借用
-                )?;
-                merge_field(
-                    &orig.description().map(str::to_string),
-                    &task.description().map(str::to_string), // 分配堆以释放不可变借用，避免与闭包中可变借用冲突
-                    &description,
-                    || task.set_description(description.clone()), // 需要task的可变借用
-                )?;
-                merge_field(&orig.deadline(), &task.deadline(), &deadline, || {
-                    task.set_deadline(deadline)
-                })?;
-                merge_field(&orig.priority(), &task.priority(), &form.priority(), || {
-                    task.set_priority(form.priority())
-                })?;
+                // 决策与写分两阶段: 先只读比较定出要写的字段,再统一可变应用,
+                // 借用互不重叠,无需堆分配来绕开同时借用
+                let (write_content, write_desc, write_deadline, write_priority) = {
+                    let task = &tasks[idx];
+                    (
+                        conflict_check(snapshot.content(), task.content(), content.as_str())?,
+                        conflict_check(
+                            snapshot.description(),
+                            task.description(),
+                            description.as_deref(),
+                        )?,
+                        conflict_check(snapshot.deadline(), task.deadline(), deadline)?,
+                        conflict_check(snapshot.priority(), task.priority(), form.priority())?,
+                    )
+                };
+                let task = &mut tasks[idx];
+                if write_content {
+                    task.set_content(content);
+                }
+                if write_desc {
+                    task.set_description(description);
+                }
+                if write_deadline {
+                    task.set_deadline(deadline);
+                }
+                if write_priority {
+                    task.set_priority(form.priority());
+                }
                 Ok(())
             })?;
             format!(">>> Task {} changed", no)
