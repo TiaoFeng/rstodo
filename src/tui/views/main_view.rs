@@ -76,16 +76,15 @@ fn draw_clock(frame: &mut Frame, area: Rect) {
     let digit_style = Style::default()
         .fg(THEME.peach)
         .add_modifier(Modifier::BOLD);
-    let lines = vec![
-        Line::from(""), // 往下移动一行更美观
-        Line::from(Span::styled(rows[0].clone(), digit_style)),
-        Line::from(Span::styled(rows[1].clone(), digit_style)),
-        Line::from(Span::styled(rows[2].clone(), digit_style)),
-        Line::from(Span::styled(
-            format!("{} {}", now.format("%Y-%m-%d"), now.format("%A")),
-            THEME.muted(),
-        )),
-    ];
+    let mut lines = vec![Line::from("")]; // 往下移动一行更美观
+    lines.extend(
+        rows.into_iter()
+            .map(|row| Line::from(Span::styled(row, digit_style))),
+    );
+    lines.push(Line::from(Span::styled(
+        format!("{} {}", now.format("%Y-%m-%d"), now.format("%A")),
+        THEME.muted(),
+    )));
 
     let block = Block::bordered()
         .title(Span::styled(" TIME ", THEME.title()))
