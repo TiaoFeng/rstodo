@@ -223,16 +223,24 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
 
 /// 切换单个任务的完成状态
 ///
-/// 目标状态与任务菜单首项标签同样由当前状态产生
+/// 以磁盘真值为翻转基准: 缓存可能落后一个同步窗口,按缓存决定目标会把无效操作谎报为已切换;
+/// 提示消息按实际翻转结果生成。菜单首项标签仍由缓存派生,标签与结果最多差一个同步窗口
 fn toggle_status(app: &mut App, no: usize, id: usize) -> Result<(), AppError> {
-    let done = app.selected_done();
-    let target = if done {
-        TaskAction::Incomplete
-    } else {
-        TaskAction::Complete
-    };
-    apply_to_tasks(app, &[(no, id)], target)?;
-    app.set_message(if done {
+    let mut was_done = false;
+    app.store.update_with_backup(|tasks| {
+        let task = tasks
+            .iter_mut()
+            .find(|task| task.id() == id)
+            .ok_or(AppError::TaskNotFound { no })?;
+        was_done = task.is_complete();
+        if was_done {
+            task.incomplete();
+        } else {
+            task.complete();
+        }
+        Ok(())
+    })?;
+    app.set_message(if was_done {
         format!("~_ Task {} undone", no)
     } else {
         format!("^_ Task {} done", no)
@@ -468,7 +476,8 @@ fn handle_multi(app: &mut App, key: KeyEvent) -> Result<(), AppError> {
             app.multi_selected.clear();
             app.state = AppState::Main;
         }
-        KeyCode::Char(' ') => {
+        // 与其余单字符快捷键同规: 不允许ctrl/alt组合, 防alt+space误切换勾选
+        KeyCode::Char(' ') if !has_ctrl_or_alt(&key) => {
             if let Some((_, task)) = app.selected_task() {
                 let id = task.id();
                 if !app.multi_selected.remove(&id) {

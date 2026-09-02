@@ -535,6 +535,69 @@ mod tests {
         assert!(tasks[0].is_complete());
     }
 
+    /// 空表下reload(外部新增或首个add落盘后): 列表非空必须选中首项,而非停留在无选中
+    #[test]
+    fn reload_from_empty_selects_first_task() {
+        let guard = TempGuard::new("tui_reload_from_empty");
+        let store = TaskStore::new(Some(guard.main_path()), UserInterfaceTypes::Tui);
+        let mut app = App::new(&store).unwrap();
+        assert_eq!(app.list_state.selected(), None);
+
+        add_task(&store, "first".to_string(), None, None, None).unwrap();
+        app.reload().unwrap();
+        assert_eq!(app.list_state.selected(), Some(0));
+    }
+
+    /// space按磁盘真值翻转: 外部进程在同步窗口内改了完成状态时,
+    /// 切换不得变成无效操作,提示消息也不得谎报
+    #[test]
+    fn space_toggle_flips_disk_truth_when_cache_is_stale() {
+        let guard = TempGuard::new("tui_toggle_stale");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap(); // 缓存: task1 undone
+
+        // 外部进程先置done,TUI不刷新
+        store
+            .update_with_backup(|tasks| {
+                tasks[0].complete();
+                Ok(())
+            })
+            .unwrap();
+
+        handler::handle_key(&mut app, key(KeyCode::Char(' ')));
+        assert!(
+            !store.load().unwrap()[0].is_complete(),
+            "应以磁盘done为基准翻转为undone"
+        );
+        assert!(
+            app.message().is_some_and(|m| m.contains("undone")),
+            "提示消息应如实反映翻转结果"
+        );
+    }
+
+    /// 多选模式的space与其余单字符快捷键同规: alt+space不得误切换勾选
+    #[test]
+    fn multi_select_space_ignores_ctrl_alt() {
+        let guard = TempGuard::new("tui_multi_space_guard");
+        let store = setup_store(&guard);
+        let mut app = App::new(&store).unwrap();
+
+        handler::handle_key(&mut app, ctrl('p'));
+        handler::handle_key(&mut app, key(KeyCode::Down)); // add
+        handler::handle_key(&mut app, key(KeyCode::Down)); // multiple choices
+        handler::handle_key(&mut app, key(KeyCode::Enter));
+        assert!(matches!(app.state, AppState::MultiSelect));
+
+        handler::handle_key(
+            &mut app,
+            KeyEvent::new(KeyCode::Char(' '), KeyModifiers::ALT),
+        );
+        assert!(app.multi_selected.is_empty(), "alt+space不应勾选任何任务");
+
+        handler::handle_key(&mut app, key(KeyCode::Char(' ')));
+        assert!(!app.multi_selected.is_empty(), "纯space正常勾选");
+    }
+
     /// ctrl+d二次确认: 任意其他按键解除挂起并清除常驻警告, 解除后再按ctrl+d只重新挂起
     #[test]
     fn ctrl_d_double_confirm_clears_notice() {
