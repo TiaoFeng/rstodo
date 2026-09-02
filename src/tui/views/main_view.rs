@@ -13,6 +13,7 @@ use ratatui::{
 
 use crate::{
     time::to_local_time,
+    todo::SortBy,
     tui::{
         app::{App, AppState},
         theme::THEME,
@@ -334,8 +335,8 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     let mut spans = vec![Span::styled(hints, THEME.muted())];
     if let Some(sort) = &app.sort {
         let name = match sort {
-            crate::todo::SortBy::Priority => "priority",
-            crate::todo::SortBy::Deadline => "deadline",
+            SortBy::Priority => "priority",
+            SortBy::Deadline => "deadline",
         };
         spans.push(Span::styled(format!("  |  sort: {}", name), THEME.muted()));
     }
